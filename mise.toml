@@ -32,6 +32,7 @@ run = [
 
 [tasks.dev]
 description = "Start Raycast extension in dev mode"
+env = { RAY_Target = "x" }
 run = "npm run dev"
 
 [tasks.lint]
