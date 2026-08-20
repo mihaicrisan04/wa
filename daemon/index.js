@@ -1,4 +1,8 @@
-import makeWASocket, { useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys";
+import makeWASocket, {
+  useMultiFileAuthState,
+  DisconnectReason,
+  fetchLatestBaileysVersion,
+} from "@whiskeysockets/baileys";
 import { createServer } from "node:http";
 import { join, extname, basename } from "node:path";
 import { existsSync, writeFileSync } from "node:fs";
@@ -212,15 +216,19 @@ async function flushPending() {
   }
 }
 
+const FALLBACK_WA_VERSION = [2, 3000, 1043857760];
+
 async function startWhatsApp() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+
+  const version = await fetchLatestBaileysVersion()
+    .then((r) => r.version)
+    .catch(() => FALLBACK_WA_VERSION);
 
   sock = makeWASocket({
     auth: state,
     logger,
-    // WhatsApp rejects the hardcoded version in the npm release (405 error).
-    // This must be kept in sync — check github.com/WhiskeySockets/Baileys/issues/2376
-    version: [2, 3000, 1034074495],
+    version,
     syncFullHistory: true,
   });
 

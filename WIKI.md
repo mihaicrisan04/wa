@@ -56,7 +56,7 @@ after running `mise daemon:auth`:
 
 ## troubleshooting
 
-**daemon gives 405 errors / no QR code**: WhatsApp changes their protocol version periodically. update the `version` array in `daemon/index.js` (see [this Baileys issue](https://github.com/WhiskeySockets/Baileys/issues/2376)), then `mise daemon:build`.
+**daemon gives 405 errors / no QR code**: WhatsApp changes their protocol version periodically. the daemon fetches the current one at startup, so this usually means it fell back to `FALLBACK_WA_VERSION` in `daemon/index.js` after a failed fetch. bump that constant and run `mise daemon:build`.
 
 **messages don't appear on my phone**: the phone number in Raycast preferences must match your WhatsApp number with country code, no `+`.
 
