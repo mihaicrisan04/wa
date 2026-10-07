@@ -232,7 +232,7 @@ describe("chats", () => {
       pinned: 1_700_000_000,
       mute_end_time: 1_800_000_000,
     });
-    store.chats.upsert(ANA_PN, "dm", { pinned: null, muteEndTime: null, unreadCount: -1 });
+    store.chats.upsert(ANA_PN, "dm", { pinned: null, muteEndTime: null, unread: { set: -1 } });
     expect(store.chats.get(ANA_PN)).toMatchObject({
       pinned: null,
       mute_end_time: null,

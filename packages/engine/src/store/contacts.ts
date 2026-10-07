@@ -11,7 +11,7 @@ export interface ContactRow {
   updated_at: number;
 }
 
-/** Only the fields present are written. */
+/** Only the fields present (and not null) are written. */
 export interface ContactPatch {
   lid?: string | null;
   phone?: string | null;
@@ -19,14 +19,6 @@ export interface ContactPatch {
   pushName?: string | null;
   verifiedName?: string | null;
 }
-
-const PATCH_COLUMNS: Record<keyof ContactPatch, string> = {
-  lid: "lid",
-  phone: "phone",
-  name: "name",
-  pushName: "push_name",
-  verifiedName: "verified_name",
-};
 
 export class ContactsRepo {
   constructor(private readonly db: Database) {}
@@ -38,19 +30,27 @@ export class ContactsRepo {
   }
 
   upsert(jid: string, patch: ContactPatch): void {
-    const entries = (Object.keys(patch) as (keyof ContactPatch)[])
-      .filter((field) => patch[field] !== undefined)
-      .map((field) => [PATCH_COLUMNS[field], patch[field] ?? null] as const);
-    const columns = entries.map(([column]) => column);
     this.db
       .query(
-        `INSERT INTO contacts (jid, updated_at${columns.map((column) => `, ${column}`).join("")})
-         VALUES ($jid, $now${columns.map((column) => `, $${column}`).join("")})
-         ON CONFLICT (jid) DO UPDATE SET updated_at = excluded.updated_at${columns
-           .map((column) => `, ${column} = coalesce(excluded.${column}, contacts.${column})`)
-           .join("")}`,
+        `INSERT INTO contacts (jid, lid, phone, name, push_name, verified_name, updated_at)
+         VALUES ($jid, $lid, $phone, $name, $pushName, $verifiedName, $now)
+         ON CONFLICT (jid) DO UPDATE SET
+           lid = coalesce(excluded.lid, contacts.lid),
+           phone = coalesce(excluded.phone, contacts.phone),
+           name = coalesce(excluded.name, contacts.name),
+           push_name = coalesce(excluded.push_name, contacts.push_name),
+           verified_name = coalesce(excluded.verified_name, contacts.verified_name),
+           updated_at = excluded.updated_at`,
       )
-      .run({ jid, now: nowSeconds(), ...Object.fromEntries(entries) } as never);
+      .run({
+        jid,
+        lid: patch.lid ?? null,
+        phone: patch.phone ?? null,
+        name: patch.name ?? null,
+        pushName: patch.pushName ?? null,
+        verifiedName: patch.verifiedName ?? null,
+        now: nowSeconds(),
+      });
   }
 
   /** Folds contact `from` into `to`, keeping the target's fields where both have one. */

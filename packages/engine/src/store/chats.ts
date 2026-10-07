@@ -27,31 +27,34 @@ export interface ChatPatch {
   archived?: boolean;
   pinned?: number | null;
   muteEndTime?: number | null;
-  unreadCount?: number;
-  /** New unread messages on top of the stored count (a marked-unread -1 counts as 0). */
-  unreadDelta?: number;
+  /** `add` counts new unread messages on top of the stored count (a marked-unread -1 counts as 0). */
+  unread?: { set: number } | { add: number };
   ephemeralExpiration?: number | null;
   lastMessageAt?: number | null;
   createdAt?: number | null;
 }
 
-const PATCH_COLUMNS: Record<keyof ChatPatch, string> = {
+type ScalarField = Exclude<keyof ChatPatch, "unread">;
+
+const PATCH_COLUMNS: Record<ScalarField, string> = {
   name: "name",
   archived: "archived",
   pinned: "pinned",
   muteEndTime: "mute_end_time",
-  unreadCount: "unread_count",
-  unreadDelta: "unread_count",
   ephemeralExpiration: "ephemeral_expiration",
   lastMessageAt: "last_message_at",
   createdAt: "created_at",
 };
 
-/** How an existing row takes a patched field; plain assignment otherwise. */
-const MERGE_EXPRESSIONS: Partial<Record<keyof ChatPatch, string>> = {
-  lastMessageAt: "max(coalesce(chats.last_message_at, 0), coalesce(excluded.last_message_at, 0))",
-  unreadDelta: "max(chats.unread_count, 0) + excluded.unread_count",
-};
+const LATEST_MESSAGE_AT =
+  "max(coalesce(chats.last_message_at, 0), coalesce(excluded.last_message_at, 0))";
+
+interface PatchedColumn {
+  column: string;
+  value: string | number | null;
+  /** How an existing row takes the value. */
+  update: string;
+}
 
 export class ChatsRepo {
   constructor(private readonly db: Database) {}
@@ -73,26 +76,21 @@ export class ChatsRepo {
   }
 
   upsert(jid: string, kind: ChatKind, patch: ChatPatch = {}): void {
-    const fields = (Object.keys(patch) as (keyof ChatPatch)[]).filter(
-      (field) => patch[field] !== undefined,
-    );
-    const entries = fields.map(
-      (field) => [PATCH_COLUMNS[field], toColumnValue(patch[field])] as const,
-    );
-    const columns = entries.map(([column]) => column);
-    const updates = fields.map(
-      (field) =>
-        `${PATCH_COLUMNS[field]} = ${MERGE_EXPRESSIONS[field] ?? `excluded.${PATCH_COLUMNS[field]}`}`,
-    );
+    const patched = patchedColumns(patch);
+    const columns = patched.map(({ column }) => `, ${column}`).join("");
+    const values = patched.map(({ column }) => `, $${column}`).join("");
+    const updates = patched.map(({ column, update }) => `, ${column} = ${update}`).join("");
     this.db
-      .query(
-        `INSERT INTO chats (jid, kind, updated_at${columns.map((column) => `, ${column}`).join("")})
-         VALUES ($jid, $kind, $now${columns.map((column) => `, $${column}`).join("")})
-         ON CONFLICT (jid) DO UPDATE SET kind = excluded.kind, updated_at = excluded.updated_at${updates
-           .map((update) => `, ${update}`)
-           .join("")}`,
+      .query<unknown, Record<string, string | number | null>>(
+        `INSERT INTO chats (jid, kind, updated_at${columns}) VALUES ($jid, $kind, $now${values})
+         ON CONFLICT (jid) DO UPDATE SET kind = excluded.kind, updated_at = excluded.updated_at${updates}`,
       )
-      .run({ jid, kind, now: nowSeconds(), ...Object.fromEntries(entries) } as never);
+      .run({
+        jid,
+        kind,
+        now: nowSeconds(),
+        ...Object.fromEntries(patched.map(({ column, value }) => [column, value])),
+      });
   }
 
   /** Moves the clock forward only: history arrives newest first, then older pages. */
@@ -105,8 +103,8 @@ export class ChatsRepo {
       .run({ jid, ts });
   }
 
-  delete(jid: string): boolean {
-    return this.db.query("DELETE FROM chats WHERE jid = $jid").run({ jid }).changes > 0;
+  delete(jid: string): void {
+    this.db.query("DELETE FROM chats WHERE jid = $jid").run({ jid });
   }
 
   /**
@@ -155,7 +153,24 @@ export class ChatsRepo {
   }
 }
 
-function toColumnValue(value: ChatPatch[keyof ChatPatch]): string | number | null {
-  if (typeof value === "boolean") return value ? 1 : 0;
-  return value ?? null;
+function patchedColumns(patch: ChatPatch): PatchedColumn[] {
+  const patched = (Object.keys(PATCH_COLUMNS) as ScalarField[]).flatMap((field) => {
+    const value = patch[field];
+    if (value === undefined) return [];
+    const column = PATCH_COLUMNS[field];
+    const update = field === "lastMessageAt" ? LATEST_MESSAGE_AT : `excluded.${column}`;
+    return [{ column, value: typeof value === "boolean" ? Number(value) : value, update }];
+  });
+  if (patch.unread) patched.push(unreadColumn(patch.unread));
+  return patched;
+}
+
+function unreadColumn(unread: NonNullable<ChatPatch["unread"]>): PatchedColumn {
+  return "add" in unread
+    ? {
+        column: "unread_count",
+        value: unread.add,
+        update: "max(chats.unread_count, 0) + excluded.unread_count",
+      }
+    : { column: "unread_count", value: unread.set, update: "excluded.unread_count" };
 }
