@@ -54,7 +54,10 @@ export class Identity implements JidResolver {
   }
 
   /** Records a mapping; when it is new, folds everything keyed by the LID into the PN. */
-  learn({ lid, pn }: LIDMapping): string[] {
+  learn(mapping: LIDMapping): string[] {
+    const pair = pairOf(mapping.lid, mapping.pn);
+    if (!pair) return [];
+    const { lid, pn } = pair;
     const { identity, media, messages, chats, participants, contacts } = this.store;
     if (!identity.setMapping(lid, pn)) return [];
     const orphanedFiles = media.moveChat(lid, pn);
@@ -120,7 +123,9 @@ export async function lookupLids(
 ): Promise<LIDMapping[]> {
   if (!lids.length) return [];
   try {
-    return (await client.signalRepository.lidMapping.getPNsForLIDs(lids)) ?? [];
+    const found = (await client.signalRepository.lidMapping.getPNsForLIDs(lids)) ?? [];
+    // Baileys answers with device-qualified PNs (`<n>:0@s.whatsapp.net`)
+    return found.flatMap(({ lid, pn }) => pairOf(lid, pn) ?? []);
   } catch (err) {
     logger.warn({ err, count: lids.length }, "could not look up LID mappings");
     return [];

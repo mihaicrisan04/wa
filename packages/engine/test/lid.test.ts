@@ -68,10 +68,16 @@ describe("one canonical jid per person", () => {
     expect(messageRows(h.store, GROUP)[0]?.sender_jid).toBe(ANA_PN);
   });
 
-  test("unknown LIDs are looked up in Baileys' LID store", async () => {
+  test("unknown LIDs are looked up in Baileys' LID store, device suffix dropped", async () => {
     await h.client.lidMapping.storeLIDPNMappings([{ lid: BOB_LID, pn: BOB_PN }]);
     await upsert(buildMessage({ chat: BOB_LID, message: content.text("hi") }));
-    expect(messageRows(h.store, BOB_PN).map((row) => row.text)).toEqual(["hi"]);
+    // the authoritative mapping arriving later must not split the chat
+    await h.emit({ "lid-mapping.update": { lid: BOB_LID, pn: BOB_PN } });
+    await upsert(buildMessage({ chat: BOB_PN, message: content.text("again") }));
+
+    expect(h.store.identity.pnForLid(BOB_LID)).toBe(BOB_PN);
+    expect(h.store.db.query("SELECT jid FROM chats").all()).toEqual([{ jid: BOB_PN }]);
+    expect(messageRows(h.store, BOB_PN).map((row) => row.text)).toEqual(["hi", "again"]);
   });
 
   test("without any mapping the LID is the canonical jid", async () => {
