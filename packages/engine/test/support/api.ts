@@ -7,6 +7,7 @@ import { ME, silent } from "./harness";
 
 export interface ApiHarness {
   temp: TempHome;
+  /** Replaceable, for tests that restart the engine. */
   engine: Engine;
   /** The current fake socket (a new one per connect). */
   client(): FakeWhatsAppClient;
@@ -58,25 +59,25 @@ export async function startApi(options: StartApiOptions = {}): Promise<ApiHarnes
     }
   }
 
-  return {
+  const harness: ApiHarness = {
     temp,
     engine,
     client: () => client,
     http(path, token, init = {}) {
       const headers = new Headers(init.headers);
       if (token) headers.set("authorization", `Bearer ${token}`);
-      return fetch(`http://127.0.0.1:${engine.port}${path}`, { ...init, headers });
+      return fetch(`http://127.0.0.1:${harness.engine.port}${path}`, { ...init, headers });
     },
     admin(path, init = {}) {
-      return fetch(`http://localhost${path}`, { ...init, unix: engine.socketPath });
+      return fetch(`http://localhost${path}`, { ...init, unix: harness.engine.socketPath });
     },
     async emit(events) {
       client.emitBatch(events);
       await client.idle();
-      await engine.ingest.drain();
+      await harness.engine.ingest.drain();
     },
     token(spec) {
-      const { store } = engine;
+      const { store } = harness.engine;
       for (const collection of spec.collections ?? []) store.collections.create(collection, null);
       store.profiles.create({
         name: spec.name,
@@ -87,10 +88,11 @@ export async function startApi(options: StartApiOptions = {}): Promise<ApiHarnes
       return issueToken(store, spec.name, null).token;
     },
     async stop() {
-      await engine.stop();
+      await harness.engine.stop();
       await temp.cleanup();
     },
   };
+  return harness;
 }
 
 export function json(body: unknown, method = "POST"): RequestInit {
