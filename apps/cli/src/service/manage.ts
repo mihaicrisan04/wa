@@ -173,8 +173,7 @@ export async function serviceLogs(
     return tail.exited;
   }
   if (!(await Bun.file(paths.logFile).exists())) {
-    io.err(`no logs yet at ${paths.logFile}`);
-    return EXIT_FAILURE;
+    throw new FailureError(`no logs yet at ${paths.logFile}`);
   }
   const tail = await exec(["tail", "-n", String(lines), paths.logFile], { cwd: "/" });
   if (tail.code !== 0)

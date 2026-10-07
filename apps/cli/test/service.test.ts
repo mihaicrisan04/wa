@@ -256,7 +256,7 @@ describe("wa service logs", () => {
   test("says so when there is no log yet", async () => {
     const result = await run(["logs"]);
     expect(result.code).toBe(1);
-    expect(result.err).toContain("no logs yet");
+    expect(result.err).toStartWith("wa service: no logs yet at ");
   });
 
   test("rejects a bad line count", async () => {

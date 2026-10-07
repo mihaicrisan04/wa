@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { COMMANDS, runCli } from "../src/cli";
+import type { CommandIO } from "../src/command";
 
 const invocations = COMMANDS.flatMap((command) => [
   { argv: [command.name], usage: command.usage },
@@ -9,6 +12,25 @@ const invocations = COMMANDS.flatMap((command) => [
   })),
 ]);
 
+/** If help ever stopped short-circuiting, `service install` or `serve` must still not touch the real machine. */
+async function sandboxedRun(argv: string[]) {
+  const sandbox = join(tmpdir(), "wa-help-test-never-created");
+  const out: string[] = [];
+  const err: string[] = [];
+  const io: CommandIO = {
+    out: (line) => out.push(line),
+    err: (line) => err.push(line),
+    env: { WA_HOME: join(sandbox, "wa"), WA_PORT: "0" },
+    homeDir: join(sandbox, "home"),
+    waCommand: [join(sandbox, "wa")],
+    exec: async (command) => {
+      throw new Error(`help ran ${command.join(" ")}`);
+    },
+  };
+  const code = await runCli(argv, io);
+  return { code, out: out.join("\n"), err };
+}
+
 describe("every command and subcommand answers --help and -h", () => {
   test.each(
     invocations.flatMap(({ argv, usage }) => [
@@ -16,26 +38,15 @@ describe("every command and subcommand answers --help and -h", () => {
       [[...argv, "-h"], usage],
     ]),
   )("wa %p", async (argv, usage) => {
-    const out: string[] = [];
-    const err: string[] = [];
-    const code = await runCli(argv, {
-      out: (line) => out.push(line),
-      err: (line) => err.push(line),
-      env: { WA_HOME: "/nonexistent/wa" },
-    });
+    const { code, out, err } = await sandboxedRun(argv);
     expect({ code, err }).toEqual({ code: 0, err: [] });
-    expect(out.join("\n")).toStartWith("usage:");
-    expect(out.join("\n")).toContain(usage);
+    expect(out).toStartWith("usage:");
+    expect(out).toContain(usage);
   });
 
   test("--help wins over other mistakes", async () => {
-    const out: string[] = [];
-    const code = await runCli(["collections", "create", "--bogus", "--help"], {
-      out: (line) => out.push(line),
-      err: () => {},
-      env: {},
-    });
+    const { code, out } = await sandboxedRun(["collections", "create", "--bogus", "--help"]);
     expect(code).toBe(0);
-    expect(out.join("\n")).toBe("usage: wa collections create <name> [--description d]");
+    expect(out).toBe("usage: wa collections create <name> [--description d]");
   });
 });

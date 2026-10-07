@@ -67,6 +67,27 @@ describe("argument checks happen before talking to the engine", () => {
   });
 });
 
+test("link stops at once when another session takes over the pairing", async () => {
+  const CONNECTION_REPLACED = 440;
+  const temp = await makeTempHome();
+  let client: FakeWhatsAppClient | undefined;
+  const engine = await startEngine(temp.config, {
+    client: () => (client = new FakeWhatsAppClient()),
+    logger: createLogger("silent"),
+  });
+  try {
+    const linking = run(["link"], { WA_HOME: temp.home });
+    while (engine.connection.status().state !== "linking") await Bun.sleep(2);
+    client!.close(CONNECTION_REPLACED);
+    const result = await linking;
+    expect(result.code).toBe(1);
+    expect(result.err).toBe("wa link: another session took over this WhatsApp link (`wa status`)");
+  } finally {
+    await engine.stop();
+    await temp.cleanup();
+  }
+});
+
 describe("against a running engine", () => {
   let temp: TempHome;
   let engine: Engine;

@@ -1,4 +1,4 @@
-import { PROFILE_CAPABILITIES } from "@wa/sdk";
+import { PROFILE_CAPABILITIES, type ProfileCapability } from "@wa/sdk";
 import { csv, isOneOf } from "../args";
 import { UsageError } from "../command";
 import { defineGroup, defineSubcommand } from "../define";
@@ -44,7 +44,12 @@ export const profiles = defineGroup({
       async run({ values, positionals: [name], help }, io) {
         const caps = csv(values.caps);
         if (!caps.length) throw new UsageError(`--caps is required\n\n${help}`);
-        const unknown = caps.filter((cap) => !isOneOf(cap, PROFILE_CAPABILITIES));
+        const capabilities: ProfileCapability[] = [];
+        const unknown: string[] = [];
+        for (const cap of caps) {
+          if (isOneOf(cap, PROFILE_CAPABILITIES)) capabilities.push(cap);
+          else unknown.push(cap);
+        }
         if (unknown.length) {
           throw new UsageError(`unknown capability: ${unknown.join(", ")}\n\n${help}`);
         }
@@ -54,7 +59,7 @@ export const profiles = defineGroup({
         }
         const profile = await engineClient(io.env).admin.profiles.create({
           name,
-          capabilities: caps.filter((cap) => isOneOf(cap, PROFILE_CAPABILITIES)),
+          capabilities,
           collections,
           allChats: values["all-chats"] ?? false,
         });
