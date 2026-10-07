@@ -75,6 +75,16 @@ CREATE INDEX messages_ts ON messages (ts);
 CREATE INDEX messages_sender ON messages (sender_jid);
 CREATE INDEX messages_expires_at ON messages (expires_at) WHERE expires_at IS NOT NULL;
 
+CREATE TABLE pending_revokes (
+  chat_jid TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  actor_from_me INTEGER NOT NULL,
+  actor_jid TEXT,
+  ts INTEGER NOT NULL
+);
+CREATE INDEX pending_revokes_message ON pending_revokes (chat_jid, message_id);
+CREATE INDEX pending_revokes_actor ON pending_revokes (actor_jid);
+
 CREATE VIRTUAL TABLE messages_fts USING fts5 (
   text, caption, file_name,
   content = 'messages', content_rowid = 'rowid',

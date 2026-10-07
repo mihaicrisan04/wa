@@ -68,6 +68,7 @@ describe("migrations", () => {
       "group_participants",
       "messages",
       "messages_fts",
+      "pending_revokes",
       "media",
       "collections",
       "collection_chats",

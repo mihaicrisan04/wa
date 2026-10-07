@@ -14,7 +14,7 @@ import {
   type MessageAction,
   type Normalized,
 } from "../whatsapp/normalize";
-import { applyAction, isAuthorized, withStoredEdit } from "./actions";
+import { applyAction, isAuthorized, withPendingRevokes, withStoredEdit } from "./actions";
 import { isolated, type IngestContext } from "./context";
 
 /** Edits and revokes a batch announced through carrier messages. */
@@ -118,7 +118,8 @@ function checkFolded(
 
 /**
  * Baileys folds a revoke into its buffered target by overwriting the target's key with the
- * carrier's, so the sender cannot be checked: keep only a placeholder a later copy can fill.
+ * carrier's, so the sender cannot be checked: keep only a placeholder, and the revoke waits for
+ * a later copy (see `applyAction`).
  */
 function revokedTarget(folded: MessageRecord, carrier: MessageAction): MessageRecord {
   return {
@@ -157,7 +158,7 @@ function checkFoldedEdit(
 function writeMessage(ctx: IngestContext, incoming: MessageRecord, pushName: string | null): void {
   const { store, identity } = ctx;
   store.chats.ensure(incoming.chatJid, identity.kindOf(incoming.chatJid));
-  const record = upsertMessage(ctx, incoming);
+  const record = upsertMessage(ctx, withPendingRevokes(ctx, incoming));
   if (!record) return;
 
   const ref = { chatJid: record.chatJid, id: record.id };

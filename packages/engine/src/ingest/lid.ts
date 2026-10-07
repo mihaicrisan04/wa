@@ -58,14 +58,16 @@ export class Identity implements JidResolver {
     const pair = pairOf(mapping.lid, mapping.pn);
     if (!pair) return [];
     const { lid, pn } = pair;
-    const { identity, media, messages, chats, participants, contacts } = this.store;
+    const { identity, media, messages, pendingRevokes, chats, participants, contacts } = this.store;
     if (!identity.setMapping(lid, pn)) return [];
     messages.moveChat(lid, pn);
+    pendingRevokes.moveChat(lid, pn);
     const orphanedFiles = media.moveChat(lid, pn);
     chats.merge(lid, pn, this.kindOf(pn));
     identity.repointAliases(lid, pn);
     identity.setAlias(lid, pn);
     messages.renameUser(lid, pn);
+    pendingRevokes.renameUser(lid, pn);
     participants.renameUser(lid, pn);
     contacts.merge(lid, pn);
     contacts.upsert(pn, { lid, phone: phoneOf(pn) });

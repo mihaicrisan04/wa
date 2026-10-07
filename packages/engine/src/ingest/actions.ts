@@ -4,9 +4,15 @@ import {
   type proto,
   type WAMessage,
 } from "@whiskeysockets/baileys";
-import { PLACEHOLDER_TYPE, type MessageRecord, type MessageRow } from "../store";
+import {
+  PLACEHOLDER_TYPE,
+  REVOKED_TYPE,
+  type MessageRecord,
+  type MessageRow,
+  type PendingRevoke,
+} from "../store";
 import { applyEditedText, contentTypeOf, textOf, typeName } from "../whatsapp/content";
-import { revokedMessage, type MessageAction } from "../whatsapp/normalize";
+import { placeholder, revokedMessage, type MessageAction } from "../whatsapp/normalize";
 import { parseRaw, serializeRaw } from "../whatsapp/raw";
 import type { IngestContext } from "./context";
 
@@ -22,21 +28,31 @@ interface Target {
  */
 export function applyAction(ctx: IngestContext, action: MessageAction): void {
   const row = ctx.store.messages.get(action.chatJid, action.targetId);
-  if (!row || row.deleted_at !== null) return;
+  if (!row) {
+    if (action.type === "revoke") awaitSender(ctx, action);
+    return;
+  }
+  if (row.deleted_at !== null) return;
   const target = { chatJid: row.chat_jid, fromMe: row.from_me === 1, senderJid: row.sender_jid };
-  if (!isAuthorized(ctx, action, target)) {
+  if (isAuthorized(ctx, action, target)) {
+    if (action.type === "edit") applyEdit(ctx, row, action);
+    else applyRevoke(ctx, row, action.ts);
+  } else if (action.type === "revoke" && !hasSender(target)) {
+    awaitSender(ctx, action);
+  } else {
     ctx.logger.warn(
       { chat: row.chat_jid, id: row.id, action: action.type },
       "ignoring an edit or revoke that does not come from the sender",
     );
-    return;
   }
-  if (action.type === "edit") applyEdit(ctx, row, action);
-  else applyRevoke(ctx, row, action.ts);
 }
 
 /** Edits come only from the sender; revokes also from a group admin. */
-export function isAuthorized(ctx: IngestContext, action: MessageAction, target: Target): boolean {
+export function isAuthorized(
+  ctx: IngestContext,
+  action: Pick<MessageAction, "type" | "actor">,
+  target: Target,
+): boolean {
   const { actor } = action;
   const isSender = actor.fromMe
     ? target.fromMe
@@ -47,6 +63,25 @@ export function isAuthorized(ctx: IngestContext, action: MessageAction, target: 
   if (!actorJid) return false;
   const role = ctx.store.participants.role(target.chatJid, actorJid);
   return role === "admin" || role === "superadmin";
+}
+
+/**
+ * A copy of a message whose revoke came first is stored as a tombstone when that revoke turns
+ * out genuine, so its content is never readable, not even for a moment.
+ */
+export function withPendingRevokes(ctx: IngestContext, record: MessageRecord): MessageRecord {
+  if (record.deletedAt !== null || !hasSender(record)) return record;
+  const pending = ctx.store.pendingRevokes.take({ chatJid: record.chatJid, id: record.id });
+  if (!pending.length) return record;
+  const genuine = pending.find((revoke) =>
+    isAuthorized(ctx, { type: "revoke", ...revoke }, record),
+  );
+  if (genuine) return revokedRecord(record, genuine.ts);
+  ctx.logger.warn(
+    { chat: record.chatJid, id: record.id },
+    "dropping a revoke that does not come from the sender",
+  );
+  return record;
 }
 
 /**
@@ -105,8 +140,25 @@ function foldEdit(message: WAMessage, edited: proto.IMessage): void {
 
 function applyRevoke(ctx: IngestContext, row: MessageRow, deletedAt: number): void {
   const key = { chatJid: row.chat_jid, id: row.id };
-  const raw = row.raw ? serializeRaw(revokedMessage(parseRaw(row.raw))) : null;
-  ctx.store.messages.tombstone(key, deletedAt, raw);
+  ctx.store.messages.tombstone(key, deletedAt, revokedRaw(row.raw));
   const file = ctx.store.media.remove(key);
   if (file) ctx.orphanedFiles.push(file);
+}
+
+/** Fails closed: a revoke whose target's sender is unknown waits for a copy that names it. */
+function awaitSender(ctx: IngestContext, action: Extract<MessageAction, { type: "revoke" }>): void {
+  const revoke: PendingRevoke = { actor: action.actor, ts: action.ts };
+  ctx.store.pendingRevokes.add({ chatJid: action.chatJid, id: action.targetId }, revoke);
+}
+
+function hasSender(target: Target): boolean {
+  return target.fromMe || target.senderJid !== null;
+}
+
+function revokedRecord(record: MessageRecord, deletedAt: number): MessageRecord {
+  return { ...placeholder(record), type: REVOKED_TYPE, deletedAt, raw: revokedRaw(record.raw) };
+}
+
+function revokedRaw(raw: string | null): string | null {
+  return raw ? serializeRaw(revokedMessage(parseRaw(raw))) : null;
 }
