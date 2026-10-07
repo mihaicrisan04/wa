@@ -32,7 +32,7 @@ wa holds a WhatsApp account's credentials and its message history, and hands par
 - `wa mcp install` registers Claude Code with a headers helper (`wa mcp headers --token-file …`), so the token stays in its 0600 file instead of Claude Code's config. It also adds a `Read(<WA_HOME>/**)` deny rule to the project's `.claude/settings.local.json`.
 - Clients upload file bytes to send. The engine never reads a filesystem path supplied by a client.
 - MCP `download_media` never returns paths inside `WA_HOME`; files are exported to `$TMPDIR/wa-export/<profile>/`.
-- `wa service install` excludes `WA_HOME/auth` (the WhatsApp keys) from Time Machine backups.
+- `wa service install` excludes `WA_HOME/auth` (the WhatsApp keys) from Time Machine backups. Relinks and logouts keep that directory and move the old keys into `auth/previous/`, so the exclusion covers them too.
 
 ## Untrusted content
 

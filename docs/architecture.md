@@ -48,9 +48,9 @@ A Bun workspace (Bun 1.4, isolated linker). Every package declares what it impor
 
 ### Connection
 
-The engine links as a new companion device (`Browsers.macOS('Desktop')`) with full history sync. Credentials live in `WA_HOME/auth`. On disconnect:
+The engine links as a new companion device (`Browsers.macOS('Desktop')`) with full history sync. Credentials live in `WA_HOME/auth`; `wa link --relink` moves the old ones to `auth/previous/relinked-<time>/`. On disconnect:
 
-- **logged out** (401): the socket ends, `auth/` is moved aside, the state becomes `needs_link`; the API stays up and `wa link` starts over;
+- **logged out** (401): the socket ends, the credentials move to `auth/previous/logged-out-<time>/`, the state becomes `needs_link`; the API stays up and `wa link` starts over;
 - **replaced** (440): another session took over; the engine stops connecting and reports it;
 - **restart required** (515): reconnects at once;
 - anything else: exponential backoff up to 60 seconds.
@@ -171,7 +171,7 @@ wa reindex
 
 `<chat>` is a jid, a phone number or a unique part of the chat's name. Everything except `serve`, `service`, `mcp headers` and `reindex` needs a running engine and talks to it over `WA_HOME/engine.sock`.
 
-`wa service install` copies the binary it runs from to `~/.local/bin/wa` and installs the launchd agent `com.mihaicrisan.wa` (`~/Library/LaunchAgents/com.mihaicrisan.wa.plist`): it starts at login, restarts when it exits, runs with umask 077 and logs to `~/Library/Logs/wa/engine.log`. `WA_HOME`, `WA_PORT` and `WA_LOG_LEVEL` set during the install are kept in the plist. It also excludes `WA_HOME/auth` from Time Machine.
+`wa service install` copies the binary it runs from to `~/.local/bin/wa` and installs the launchd agent `com.mihaicrisan.wa` (`~/Library/LaunchAgents/com.mihaicrisan.wa.plist`): it starts at login, restarts when it exits, runs with umask 077 and logs to `~/Library/Logs/wa/engine.log`. `WA_HOME`, `WA_PORT` and `WA_LOG_LEVEL` set during the install are kept in the plist. It also excludes `WA_HOME/auth` from Time Machine; the exclusion is on the directory, which the engine never replaces (earlier credentials move into `auth/previous/`), so it holds across relinks and logouts.
 
 ## Development
 

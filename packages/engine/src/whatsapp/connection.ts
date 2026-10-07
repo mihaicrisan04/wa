@@ -1,4 +1,4 @@
-import { rename, stat } from "node:fs/promises";
+import { mkdir, readdir, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   DisconnectReason,
@@ -49,6 +49,9 @@ export interface ConnectionOptions {
 type ClientListener = (client: WhatsAppClient) => void | Promise<void>;
 
 const DEFAULT_BACKOFF = { baseMs: 1_000, maxMs: 60_000 };
+/** Inside `auth/`, holding the credentials of earlier links. */
+export const PREVIOUS_AUTH_DIR = "previous";
+const CREDS_FILE = "creds.json";
 
 export class AlreadyLinkedError extends Error {
   constructor() {
@@ -259,11 +262,22 @@ export class WhatsAppConnection {
     if (client) await endClient(client);
   }
 
+  /**
+   * Moves the files, not `auth/` itself: the directory keeps its sticky Time Machine
+   * exclusion, and the old keys stay under it.
+   */
   private async moveAuthAside(reason: string): Promise<void> {
     const stamp = new Date().toISOString().replaceAll(":", "-");
-    await rename(this.authDir, `${this.authDir}-${reason}-${stamp}`).catch((err: unknown) => {
+    const aside = join(this.authDir, PREVIOUS_AUTH_DIR, `${reason}-${stamp}`);
+    try {
+      await mkdir(aside, { recursive: true });
+      const files = (await readdir(this.authDir)).filter((name) => name !== PREVIOUS_AUTH_DIR);
+      // creds last: an interrupted move still reads as linked, so relinking can be retried
+      files.sort((a, b) => Number(a === CREDS_FILE) - Number(b === CREDS_FILE));
+      for (const name of files) await rename(join(this.authDir, name), join(aside, name));
+    } catch (err) {
       this.logger.warn({ err }, "could not move the old credentials aside");
-    });
+    }
     await this.loadAuth();
   }
 }
