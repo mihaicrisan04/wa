@@ -1,9 +1,15 @@
-import { rm } from "node:fs/promises";
 import { Clipboard, showToast, Toast } from "@raycast/api";
 import { describeContent, readClipboard } from "./clipboard-media";
-import { reportDelivery, sendContent, waitForDelivery, type SendableContent } from "./deliver";
+import {
+  isOnline,
+  reportDelivery,
+  sendContent,
+  waitForDelivery,
+  type SendableContent,
+} from "./deliver";
 import { engineClient, enginePort } from "./engine";
 import { describeError } from "./errors";
+import { removeExtractedImages } from "./temp-files";
 
 export interface SendTarget {
   /** "self", or a canonical chat jid. */
@@ -21,8 +27,7 @@ export async function sendClipboardTo(target: SendTarget): Promise<boolean> {
   try {
     return await sendWithToast(target, content);
   } finally {
-    // the engine keeps its own copy of uploaded bytes, so the extracted pasteboard image can go
-    if (content.type === "image") await rm(content.filePath, { force: true });
+    await removeExtractedImages([content]);
   }
 }
 
@@ -38,7 +43,9 @@ export async function sendWithToast(
   try {
     const client = await engineClient();
     const { outboxId } = await sendContent(client, target.to, content);
-    const report = reportDelivery(await waitForDelivery(client, outboxId), target.name);
+    const entry = await waitForDelivery(client, outboxId);
+    const online = entry.status === "queued" ? await isOnline(client) : true;
+    const report = reportDelivery(entry, target.name, online);
     toast.style = report.ok ? Toast.Style.Success : Toast.Style.Failure;
     toast.title = report.title;
     toast.message = report.message ?? describeContent(content);

@@ -4,6 +4,7 @@ import { RecipientList } from "./components/recipient-list";
 import { describeContent, readClipboard } from "./lib/clipboard-media";
 import type { SendableContent } from "./lib/deliver";
 import { sendWithToast } from "./lib/send-clipboard";
+import { removeExtractedImages } from "./lib/temp-files";
 
 /** Raycast keeps the current clipboard plus five earlier entries. */
 const HISTORY_DEPTH = 5;
@@ -45,16 +46,32 @@ function ago(offset: number): string {
   return `${offset} ${offset === 1 ? "copy" : "copies"} ago`;
 }
 
-export default function Command() {
+/** The clipboard entries, with any pasteboard image extracted for them removed on close. */
+function useClipboardEntries() {
   const [entries, setEntries] = useState<ClipboardEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    let loaded: ClipboardEntry[] = [];
+    let closed = false;
+    const contentsOf = (found: ClipboardEntry[]) => found.map((entry) => entry.content);
     void loadEntries().then((found) => {
+      if (closed) return removeExtractedImages(contentsOf(found));
+      loaded = found;
       setEntries(found);
       setIsLoading(false);
     });
+    return () => {
+      closed = true;
+      void removeExtractedImages(contentsOf(loaded));
+    };
   }, []);
+
+  return { entries, isLoading };
+}
+
+export default function Command() {
+  const { entries, isLoading } = useClipboardEntries();
 
   return (
     <List isLoading={isLoading} searchBarPlaceholder="Pick something to send to WhatsApp">

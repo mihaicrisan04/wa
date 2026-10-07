@@ -44,7 +44,7 @@ export function cachedMediaPath(dir: string, chat: string, id: string, extension
   return join(dir, `${hash}${extension}`);
 }
 
-export async function exists(path: string): Promise<boolean> {
+async function exists(path: string): Promise<boolean> {
   return access(path).then(
     () => true,
     () => false,

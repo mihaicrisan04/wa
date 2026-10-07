@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { openAsBlob } from "node:fs";
 import { basename } from "node:path";
 import type { OutboxEntry, OutboxStatus, SendResult, WaClient } from "@wa/sdk";
 import type { ClipboardContent } from "./clipboard-media";
@@ -7,6 +7,7 @@ export type SendableContent = Exclude<ClipboardContent, { type: "empty" }>;
 
 type SendClient = Pick<WaClient, "send" | "sendFile">;
 type OutboxClient = Pick<WaClient, "outbox">;
+type StatusClient = Pick<WaClient, "status">;
 
 /** Text goes as JSON; files are uploaded as bytes, the engine never reads our paths. */
 export async function sendContent(
@@ -21,8 +22,9 @@ export async function sendContent(
       return client.send({ to, text: content.url });
     case "file":
     case "image": {
-      const bytes = await readFile(content.filePath);
-      return client.sendFile({ to, file: new Blob([bytes]), fileName: basename(content.filePath) });
+      // streamed from disk: a file up to WhatsApp's 2 GB cap never has to fit in memory
+      const file = await openAsBlob(content.filePath);
+      return client.sendFile({ to, file, fileName: basename(content.filePath) });
     }
   }
 }
@@ -35,10 +37,7 @@ export interface DeliveryOptions {
 
 const SETTLED: ReadonlySet<OutboxStatus> = new Set(["sent", "failed", "expired"]);
 
-/**
- * Sends are queued in the engine's outbox; poll briefly so the toast can say "sent". Still queued
- * at the deadline means WhatsApp is offline and the engine sends it once it reconnects.
- */
+/** Sends are queued in the engine's outbox; poll briefly so the toast can say "sent". */
 export async function waitForDelivery(
   client: OutboxClient,
   outboxId: string,
@@ -62,23 +61,40 @@ export interface DeliveryReport {
   message?: string;
 }
 
-export function reportDelivery(entry: OutboxEntry, recipient: string): DeliveryReport {
+/** Only asked when an entry is still queued, to tell "offline" from "waiting its turn". */
+export async function isOnline(client: StatusClient): Promise<boolean> {
+  return client.status().then(
+    (status) => status.state === "open",
+    () => false,
+  );
+}
+
+export function reportDelivery(
+  entry: OutboxEntry,
+  recipient: string,
+  online: boolean,
+): DeliveryReport {
   switch (entry.status) {
     case "sent":
       return { ok: true, title: `Sent to ${recipient}` };
-    case "queued":
     case "sending":
       return {
         ok: true,
-        title: `Queued for ${recipient}`,
-        message:
-          entry.attempts > 0
-            ? "The first try failed; the engine keeps retrying for up to an hour."
-            : "WhatsApp is offline; the engine sends it when it reconnects (within an hour).",
+        title: `Still sending to ${recipient}`,
+        message: "The engine finishes it in the background.",
       };
+    case "queued":
+      return { ok: true, title: `Queued for ${recipient}`, message: queuedReason(entry, online) };
     case "failed":
       return { ok: false, title: "Failed to send", message: entry.error ?? undefined };
     case "expired":
       return { ok: false, title: "Not sent", message: "WhatsApp stayed offline for an hour." };
   }
+}
+
+function queuedReason(entry: OutboxEntry, online: boolean): string {
+  if (entry.attempts > 0) return "A try failed; the engine keeps retrying for up to an hour.";
+  if (!online)
+    return "WhatsApp is offline; the engine sends it when it reconnects (within an hour).";
+  return "Waiting behind other messages in the outbox.";
 }

@@ -1,7 +1,7 @@
 import { Action, Icon, List } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
 import type { SearchHit } from "@wa/sdk";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ErrorView, showErrorToast } from "./components/error-view";
 import { MessageActions } from "./components/message-actions";
 import { MessageDetail } from "./components/message-detail";
@@ -9,6 +9,7 @@ import { engineClient, enginePort } from "./lib/engine";
 import { describeError } from "./lib/errors";
 import { chatTitle, senderLabel } from "./lib/labels";
 import { snippetText } from "./lib/markdown";
+import { MEDIA_DIR, MEDIA_TTL_MS, pruneStaleFiles } from "./lib/temp-files";
 
 const PAGE_SIZE = 30;
 const MIN_QUERY = 2;
@@ -38,6 +39,7 @@ const TYPE_ICONS: Record<string, Icon> = {
 
 export default function Command() {
   const [query, setQuery] = useState("");
+  useEffect(() => void pruneStaleFiles(MEDIA_DIR, MEDIA_TTL_MS), []);
   const { data, isLoading, error, pagination, revalidate } = usePromise(searchPages, [query], {
     onError: showErrorToast,
   });

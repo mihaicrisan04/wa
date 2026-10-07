@@ -1,4 +1,4 @@
-import { homedir, tmpdir } from "node:os";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { Action, ActionPanel, Icon, open, showInFinder, showToast, Toast } from "@raycast/api";
 import type { Message } from "@wa/sdk";
@@ -6,14 +6,12 @@ import { engineClient, enginePort } from "../lib/engine";
 import { describeError } from "../lib/errors";
 import {
   cachedMediaPath,
-  exists,
   extensionFor,
   freePath,
   safeFileName,
   saveDownload,
 } from "../lib/media-file";
-
-const CACHE_DIR = join(tmpdir(), "wa-raycast");
+import { MEDIA_DIR, MEDIA_TTL_MS, pruneStaleFiles } from "../lib/temp-files";
 
 export function hasDownloadableMedia(message: Message): boolean {
   return message.hasMedia && !message.viewOnce && !message.deletedAt;
@@ -39,17 +37,14 @@ export function MediaActions({ message }: { message: Message }) {
   );
 }
 
+/** Downloaded fresh every time, so a message deleted or revoked since isn't served from disk. */
 async function openMedia(message: Message): Promise<string> {
+  await pruneStaleFiles(MEDIA_DIR, MEDIA_TTL_MS);
   const client = await engineClient();
-  const info = await client.media(message.chat, message.id);
-  const path = cachedMediaPath(
-    CACHE_DIR,
-    message.chat,
-    message.id,
-    extensionFor(info.fileName, info.mimetype),
-  );
-  if (!(await exists(path)))
-    await saveDownload(await client.downloadMedia(message.chat, message.id), path);
+  const download = await client.downloadMedia(message.chat, message.id);
+  const extension = extensionFor(download.fileName ?? message.fileName, download.mimetype);
+  const path = cachedMediaPath(MEDIA_DIR, message.chat, message.id, extension);
+  await saveDownload(download, path);
   await open(path);
   return "Opened";
 }

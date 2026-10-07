@@ -1,9 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { writeFile } from "node:fs/promises";
+import { truncate, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { OutboxEntry, SendFileInput, SendResult, WaClient } from "@wa/sdk";
+import {
+  createWaClient,
+  MAX_UPLOAD_BYTES,
+  type OutboxEntry,
+  type SendFileInput,
+  type SendResult,
+  type Status,
+  type WaClient,
+} from "@wa/sdk";
 import { readClipboard } from "../src/lib/clipboard-media";
-import { reportDelivery, sendContent, waitForDelivery } from "../src/lib/deliver";
+import { isOnline, reportDelivery, sendContent, waitForDelivery } from "../src/lib/deliver";
 import { outboxEntry, tempDir } from "./support";
 
 let dir: string;
@@ -59,6 +67,25 @@ describe("sending clipboard content", () => {
     expect(JSON.stringify(upload)).not.toContain(dir);
   });
 
+  test("a file over WhatsApp's 2 GB cap is refused before any upload starts", async () => {
+    const path = join(dir, "huge.mov");
+    await writeFile(path, "");
+    // sparse: the size is there without writing 2 GB to disk
+    await truncate(path, MAX_UPLOAD_BYTES + 1);
+    let uploads = 0;
+    const client = createWaClient({
+      fetch: async () => {
+        uploads++;
+        return new Response(null, { status: 500 });
+      },
+    });
+    const error = await sendContent(client, "self", { type: "file", filePath: path }).catch(
+      (err: unknown) => err,
+    );
+    expect(error).toMatchObject({ code: "too_large" });
+    expect(uploads).toBe(0);
+  });
+
   test("a Finder file URL from the clipboard is uploaded from its decoded path", async () => {
     const path = join(dir, "my photo.png");
     await writeFile(path, "png");
@@ -109,26 +136,42 @@ describe("waiting for the outbox", () => {
 });
 
 describe("delivery report", () => {
-  test("sent, queued offline, retrying, failed and expired", () => {
-    expect(reportDelivery(outboxEntry({ status: "sent" }), "Ana")).toEqual({
-      ok: true,
-      title: "Sent to Ana",
+  const report = (overrides: Partial<OutboxEntry>, online = true) =>
+    reportDelivery(outboxEntry(overrides), "Ana", online);
+
+  test("sent, failed and expired", () => {
+    expect(report({ status: "sent" })).toEqual({ ok: true, title: "Sent to Ana" });
+    expect(report({ status: "failed", error: "sending failed after 8 attempts" })).toEqual({
+      ok: false,
+      title: "Failed to send",
+      message: "sending failed after 8 attempts",
     });
-    expect(reportDelivery(outboxEntry({ status: "queued" }), "Ana")).toMatchObject({
+    expect(report({ status: "expired" }).ok).toBe(false);
+  });
+
+  test("a first try still uploading is in progress, not a failure", () => {
+    // the engine counts the attempt as soon as it claims the entry
+    expect(report({ status: "sending", attempts: 1 })).toEqual({
       ok: true,
-      title: "Queued for Ana",
-      message: expect.stringContaining("offline"),
+      title: "Still sending to Ana",
+      message: "The engine finishes it in the background.",
     });
-    expect(reportDelivery(outboxEntry({ status: "queued", attempts: 2 }), "Ana")).toMatchObject({
-      ok: true,
-      message: expect.stringContaining("retrying"),
+  });
+
+  test("queued: offline, waiting its turn, or retrying after a failed try", () => {
+    expect(report({ status: "queued" }, false).message).toContain("offline");
+    expect(report({ status: "queued" }, true).message).toBe(
+      "Waiting behind other messages in the outbox.",
+    );
+    expect(report({ status: "queued", attempts: 2 }, true).message).toContain("retrying");
+  });
+
+  test("online means the engine says WhatsApp is open; an unreachable engine is offline", async () => {
+    const statusOf = (state: Status["state"]) => ({
+      status: async () => ({ state }) as Status,
     });
-    expect(
-      reportDelivery(
-        outboxEntry({ status: "failed", error: "sending failed after 8 attempts" }),
-        "Ana",
-      ),
-    ).toEqual({ ok: false, title: "Failed to send", message: "sending failed after 8 attempts" });
-    expect(reportDelivery(outboxEntry({ status: "expired" }), "Ana").ok).toBe(false);
+    expect(await isOnline(statusOf("open"))).toBe(true);
+    expect(await isOnline(statusOf("reconnecting"))).toBe(false);
+    expect(await isOnline({ status: () => Promise.reject(new Error("down")) })).toBe(false);
   });
 });

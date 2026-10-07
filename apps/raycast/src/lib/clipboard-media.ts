@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { CLIPBOARD_DIR, CLIPBOARD_TTL_MS, pruneStaleFiles } from "./temp-files";
 
 export type ClipboardContent =
   | { type: "text"; text: string }
@@ -15,8 +15,11 @@ export type ClipboardContent =
  * Handles public.png, public.tiff, and other NSImage-compatible pasteboard types.
  */
 function saveClipboardImage(): string | null {
-  const tempPath = join(tmpdir(), `wa-clipboard-${Date.now()}.png`);
+  // whatever a closed or crashed command left behind
+  void pruneStaleFiles(CLIPBOARD_DIR, CLIPBOARD_TTL_MS);
+  const tempPath = join(CLIPBOARD_DIR, `${Date.now()}.png`);
   try {
+    mkdirSync(CLIPBOARD_DIR, { recursive: true, mode: 0o700 });
     const result = execSync(
       `swift -e '
 import AppKit
