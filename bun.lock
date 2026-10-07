@@ -12,7 +12,7 @@
     },
     "apps/cli": {
       "name": "@wa/cli",
-      "version": "0.1.0",
+      "version": "1.0.0",
       "bin": {
         "wa": "./src/index.ts",
       },
@@ -29,6 +29,7 @@
     },
     "apps/raycast": {
       "name": "wa",
+      "version": "1.0.0",
       "dependencies": {
         "@raycast/api": "^1.104.11",
         "@raycast/utils": "^2.2.3",
@@ -46,7 +47,7 @@
     },
     "packages/engine": {
       "name": "@wa/engine",
-      "version": "0.1.0",
+      "version": "1.0.0",
       "dependencies": {
         "@modelcontextprotocol/server": "^2.3.1",
         "@wa/sdk": "workspace:*",
@@ -65,7 +66,7 @@
     },
     "packages/sdk": {
       "name": "@wa/sdk",
-      "version": "0.1.0",
+      "version": "1.0.0",
       "devDependencies": {
         "typescript": "~5.9.3",
       },

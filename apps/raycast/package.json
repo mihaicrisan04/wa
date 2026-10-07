@@ -2,6 +2,7 @@
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "wa",
   "title": "WhatsApp",
+  "version": "1.0.0",
   "description": "Send clipboard content to WhatsApp chats and search your messages through the local wa engine",
   "icon": "icon.png",
   "author": "mihai",
