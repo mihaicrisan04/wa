@@ -6,7 +6,13 @@ import type { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { downloadMediaMessage, type WAMessage } from "@whiskeysockets/baileys";
 import { baileysLogger, type Logger } from "../logger";
-import type { MediaRow, MessageKeyRef, Store } from "../store";
+import {
+  nowSeconds,
+  type MediaRow,
+  type MessageKeyRef,
+  type MessageRow,
+  type Store,
+} from "../store";
 import type { WhatsAppClient } from "./client";
 import { parseRaw, serializeRaw } from "./raw";
 
@@ -66,7 +72,7 @@ export class MediaCache {
   private async load(key: MessageKeyRef): Promise<CachedMedia> {
     const { store } = this.options;
     const row = store.messages.get(key.chatJid, key.id);
-    if (!row || row.deleted_at !== null) throw new MediaUnavailableError("not_found");
+    if (!row || isGone(row)) throw new MediaUnavailableError("not_found");
     if (row.view_once) throw new MediaUnavailableError("view_once");
     const media = store.media.get(key);
     if (!media || !row.raw) throw new MediaUnavailableError("not_media");
@@ -126,6 +132,11 @@ export async function removeCachedFiles(paths: string[], logger: Logger): Promis
       }),
     ),
   );
+}
+
+/** Revoked, or a disappearing message past its expiry that the purge has not reached yet. */
+function isGone(row: MessageRow): boolean {
+  return row.deleted_at !== null || (row.expires_at !== null && row.expires_at <= nowSeconds());
 }
 
 function describe(media: MediaRow, path: string, size: number): CachedMedia {
