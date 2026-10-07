@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { SNIPPET_CLOSE, SNIPPET_OPEN } from "@wa/sdk";
-import { chatTitle, messagePreview, phoneOf, senderLabel } from "../src/lib/labels";
+import { chatTitle, phoneOf, senderLabel } from "../src/lib/labels";
 import {
   contextMarkdown,
   escapeMarkdown,
@@ -104,14 +104,9 @@ describe("labels", () => {
     expect(chatTitle({ jid: PEER, name: null, kind: "self" })).toBe("You");
   });
 
-  test("senders and previews", () => {
+  test("senders", () => {
     expect(senderLabel(message({ fromMe: true }))).toBe("You");
     expect(senderLabel(message({ senderName: null }))).toBe("+40700000002");
     expect(senderLabel(message({ senderName: null, sender: null }))).toBe("Unknown");
-    expect(messagePreview(message({ text: null, fileName: "a.pdf", type: "document" }))).toBe(
-      "a.pdf",
-    );
-    expect(messagePreview(message({ text: null, type: "sticker" }))).toBe("(sticker)");
-    expect(messagePreview(message({ deletedAt: 5 }))).toBe("(deleted)");
   });
 });

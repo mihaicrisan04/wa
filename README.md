@@ -32,17 +32,18 @@ mise run dev:engine   # engine from source on a dev data dir, port 7374
 mise run dev:raycast  # Raycast dev mode
 ```
 
-> the repo is mid-migration to the `wa` engine: the legacy daemon and its `mise daemon:*` tasks are gone, and the Raycast extension still expects a daemon on port 7272 until it moves to the engine. full setup docs come with the README rewrite.
+> the repo is mid-migration to the `wa` engine; full setup docs come with the README rewrite.
 
-then set your phone number (with country code, no `+`) in Raycast preferences.
+the Raycast extension talks to the engine on `127.0.0.1:7373` (change it with the Port preference; `dev:engine` uses 7374). it needs no setup: with the Token preference empty it uses the token the engine writes to `~/Library/Application Support/wa/tokens/raycast.token`.
 
 ## commands
 
-- **send to yourself**: clipboard goes to your number, no UI
-- **send to contact**: search a contact, send
-- **pick item to send**: pick from last 6 clipboard items
-- **whatsapp auth**: show the QR in Raycast
-- **whatsapp daemon status**: check if the daemon is alive
+- **send to yourself**: clipboard goes to your own chat, no UI
+- **send to chat**: pick a contact or group (most recent first), send the clipboard
+- **pick item to send**: pick from the last 6 clipboard items, send to yourself or a chat
+- **search messages**: full-text search with context, copy text, open or save media
+- **link WhatsApp**: scan the QR to link the engine
+- **status**: connection, history sync, counts and outbox
 
 ## more
 

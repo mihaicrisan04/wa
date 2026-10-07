@@ -43,9 +43,3 @@ const STATE_LABELS: Record<ConnectionState, string> = {
 export function stateLabel(state: ConnectionState): string {
   return STATE_LABELS[state];
 }
-
-/** What the message is about in one line: its text, caption, file name or type. */
-export function messagePreview(message: Message): string {
-  if (message.deletedAt) return "(deleted)";
-  return message.text || message.caption || message.fileName || `(${message.type})`;
-}
