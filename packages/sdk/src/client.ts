@@ -291,12 +291,23 @@ function fileNameOf(disposition: string | null): string | null {
   return disposition?.match(/filename="([^"]*)"/i)?.[1] ?? null;
 }
 
-function toApiError(status: number, body: unknown): WaApiError {
-  const error = (body as Partial<ApiErrorBody> | null)?.error;
-  return new WaApiError(
-    status,
-    error?.code ?? "http_error",
-    error?.message ?? `request failed with status ${status}`,
-    error?.candidates ?? [],
+function isApiErrorBody(body: unknown): body is ApiErrorBody {
+  if (typeof body !== "object" || body === null || !("error" in body)) return false;
+  const { error } = body;
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    "message" in error &&
+    typeof error.message === "string"
   );
+}
+
+function toApiError(status: number, body: unknown): WaApiError {
+  if (!isApiErrorBody(body)) {
+    return new WaApiError(status, "http_error", `request failed with status ${status}`, []);
+  }
+  const { code, message, candidates } = body.error;
+  return new WaApiError(status, code, message, candidates ?? []);
 }

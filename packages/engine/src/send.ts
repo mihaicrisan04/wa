@@ -1,6 +1,6 @@
 import type { SendResult } from "@wa/sdk";
 import type { Outbox } from "./outbox";
-import { recordAudit } from "./policy";
+import { profileOf, recordAudit } from "./policy";
 import { sendTarget, type ReadContext } from "./queries";
 import type { OutgoingMessage } from "./whatsapp/outgoing";
 
@@ -23,11 +23,7 @@ export async function queueSend(
 ): Promise<QueuedSend> {
   const { principal } = ctx;
   const chat = sendTarget(ctx, to);
-  const row = await outbox.enqueue(
-    chat,
-    message,
-    principal.kind === "token" ? principal.profile : null,
-  );
+  const row = await outbox.enqueue(chat, message, profileOf(principal));
   recordAudit(ctx.store, principal, "send", {
     chatJid: chat,
     detail: { outboxId: row.id, kind: message.kind, ...(via && { via }) },

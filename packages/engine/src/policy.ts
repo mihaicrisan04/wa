@@ -83,14 +83,20 @@ export function and(...fragments: SqlFragment[]): SqlFragment {
   };
 }
 
+/** The token profile acting, or null for the admin. */
+export function profileOf(principal: Principal): string | null {
+  return principal.kind === "token" ? principal.profile : null;
+}
+
 /** Who to record in the audit log. */
 function auditActor(principal: Principal): {
   tokenId: string | null;
   profile: string | null;
 } {
-  return principal.kind === "admin"
-    ? { tokenId: null, profile: null }
-    : { tokenId: principal.tokenId, profile: principal.profile };
+  return {
+    tokenId: principal.kind === "token" ? principal.tokenId : null,
+    profile: profileOf(principal),
+  };
 }
 
 export function recordAudit(

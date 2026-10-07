@@ -84,12 +84,12 @@ export function raycastTokenPath(home: string): string {
   return join(tokensDir(home), "raycast.token");
 }
 
-/** Every file the engine creates is 0600 and every directory 0700. */
 /** Where MCP `download_media` exports files, outside WA_HOME so agents may read them. */
 export function defaultExportDir(): string {
   return join(tmpdir(), "wa-export");
 }
 
+/** Every file the engine creates is 0600 and every directory 0700. */
 export function restrictFileModes(): void {
   process.umask(0o077);
 }
