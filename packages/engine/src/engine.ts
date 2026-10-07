@@ -1,12 +1,22 @@
-import { chmod, mkdir } from "node:fs/promises";
-import { createApp } from "./api/app";
-import { databasePath, ENGINE_VERSION, restrictFileModes, type EngineConfig } from "./config";
+import { chmod, mkdir, rm } from "node:fs/promises";
+import type { Server } from "bun";
+import { ensureRaycastAccess } from "./access";
+import { createApp, type ApiDeps, type App } from "./api/app";
+import { listenOnSocket } from "./api/socket";
+import {
+  databasePath,
+  ENGINE_VERSION,
+  restrictFileModes,
+  socketPath,
+  type EngineConfig,
+} from "./config";
 import { Ingest } from "./ingest";
 import { createLogger, type Logger } from "./logger";
+import { Outbox } from "./outbox";
 import { openStore, type Store } from "./store";
 import type { ClientFactory, SocketHooks, WhatsAppClient } from "./whatsapp/client";
 import { WhatsAppConnection } from "./whatsapp/connection";
-import { MediaCache, removeCachedFiles } from "./whatsapp/media";
+import { MediaCache, removeCachedFiles, type MediaCacheOptions } from "./whatsapp/media";
 import { baileysClientFactory } from "./whatsapp/socket";
 
 export interface StartEngineOptions {
@@ -14,17 +24,25 @@ export interface StartEngineOptions {
   client?: WhatsAppClient | ClientFactory;
   logger?: Logger;
   reconnectBackoff?: { baseMs: number; maxMs: number };
+  outboxBackoff?: { baseMs: number; maxMs: number };
   /** How often disappearing messages past their expiry are purged. */
   purgeIntervalMs?: number;
+  /** Replaces Baileys' media downloader (tests must never reach WhatsApp's CDN). */
+  mediaDownload?: MediaCacheOptions["download"];
 }
 
 export interface Engine {
   /** The bound port; differs from the config when it asked for port 0. */
   port: number;
+  /** The admin unix socket. */
+  socketPath: string;
   connection: WhatsAppConnection;
   store: Store;
   ingest: Ingest;
   media: MediaCache;
+  outbox: Outbox;
+  /** The HTTP apps behind the TCP listener and the admin socket. */
+  apps: { tcp: App; admin: App };
   stop(): Promise<void>;
 }
 
@@ -58,38 +76,75 @@ export async function startEngine(
     home: config.home,
     logger,
     client: () => connection.client(),
+    download: options.mediaDownload,
   });
+  const outbox = new Outbox({
+    store,
+    home: config.home,
+    logger,
+    client: () => (connection.status().state === "open" ? connection.client() : null),
+    me: () => connection.me(),
+    backoff: options.outboxBackoff,
+  });
+  connection.onOpen(() => outbox.flush());
 
   const purge = setInterval(() => {
     void removeCachedFiles(store.purgeExpired(), logger).catch((err: unknown) => {
       logger.error({ err }, "could not purge disappearing messages");
     });
+    void outbox.expire();
   }, options.purgeIntervalMs ?? PURGE_INTERVAL_MS);
 
-  const app = createApp({
-    version: ENGINE_VERSION,
-    logger,
-    port: () => server.port ?? config.port,
-  });
-  const server = Bun.serve({ hostname: config.host, port: config.port, fetch: app.fetch });
-  logger.info({ port: server.port }, "wa engine listening");
+  let server: Server<undefined> | null = null;
+  let adminServer: Server<undefined> | null = null;
+  const deps: ApiDeps = { version: ENGINE_VERSION, logger, store, connection, media, outbox };
+  const apps = {
+    tcp: createApp(
+      { ...deps, noTimeout: (request) => server?.timeout(request, 0) },
+      { kind: "tcp", port: () => server?.port ?? config.port },
+    ),
+    admin: createApp(
+      { ...deps, noTimeout: (request) => adminServer?.timeout(request, 0) },
+      { kind: "unix" },
+    ),
+  };
+  const adminSocket = socketPath(config.home);
 
   const stop = async () => {
     clearInterval(purge);
     await connection.stop();
-    await server.stop(true);
+    await outbox.stop();
+    await server?.stop(true);
+    if (adminServer) {
+      await adminServer.stop(true);
+      await rm(adminSocket, { force: true });
+    }
     await ingest.drain();
     store.close();
   };
 
   try {
+    await ensureRaycastAccess(store, config.home);
+    adminServer = await listenOnSocket(adminSocket, apps.admin.fetch);
+    server = Bun.serve({ hostname: config.host, port: config.port, fetch: apps.tcp.fetch });
+    logger.info({ port: server.port }, "wa engine listening");
     await connection.start();
   } catch (err) {
     await stop();
     throw err;
   }
 
-  return { port: server.port ?? config.port, connection, store, ingest, media, stop };
+  return {
+    port: server.port ?? config.port,
+    socketPath: adminSocket,
+    connection,
+    store,
+    ingest,
+    media,
+    outbox,
+    apps,
+    stop,
+  };
 }
 
 function toFactory(client: StartEngineOptions["client"]): ClientFactory | undefined {

@@ -1,20 +1,17 @@
+import type { ApiErrorBody } from "@wa/sdk";
 import type { Context } from "hono";
-import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { ZodError } from "zod";
+import { ApiError } from "../errors";
 import type { Logger } from "../logger";
 
-export class ApiError extends Error {
-  constructor(
-    readonly status: ContentfulStatusCode,
-    readonly code: string,
-    message: string,
-  ) {
-    super(message);
-  }
-}
+export { ApiError };
 
-export function errorBody(code: string, message: string) {
-  return { error: { code, message } };
+export function errorBody(
+  code: string,
+  message: string,
+  candidates?: ApiErrorBody["error"]["candidates"],
+): ApiErrorBody {
+  return { error: { code, message, ...(candidates ? { candidates } : {}) } };
 }
 
 export function notFound(c: Context) {
@@ -24,7 +21,9 @@ export function notFound(c: Context) {
 /** Internal errors never leak driver or library message text to clients. */
 export function errorHandler(logger: Logger) {
   return (err: Error, c: Context) => {
-    if (err instanceof ApiError) return c.json(errorBody(err.code, err.message), err.status);
+    if (err instanceof ApiError) {
+      return c.json(errorBody(err.code, err.message, err.candidates), err.status);
+    }
     if (err instanceof ZodError) {
       const message = err.issues
         .map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`)
