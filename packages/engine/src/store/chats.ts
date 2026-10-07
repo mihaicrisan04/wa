@@ -47,8 +47,7 @@ const PATCH_COLUMNS: Record<keyof ChatPatch, string> = {
 
 /** How an existing row takes a patched field; plain assignment otherwise. */
 const MERGE_EXPRESSIONS: Partial<Record<keyof ChatPatch, string>> = {
-  lastMessageAt:
-    "max(coalesce(chats.last_message_at, 0), coalesce(excluded.last_message_at, 0))",
+  lastMessageAt: "max(coalesce(chats.last_message_at, 0), coalesce(excluded.last_message_at, 0))",
   unreadDelta: "max(chats.unread_count, 0) + excluded.unread_count",
 };
 
