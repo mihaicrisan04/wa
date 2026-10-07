@@ -191,15 +191,17 @@ function createApps(
 
 /** Purges expired disappearing messages and queued sends on a timer; returns how to stop it. */
 function purgeEvery(intervalMs: number, { store, outbox }: Services, logger: Logger): () => void {
-  const purge = async () => {
+  const attempt = async (what: string, work: () => Promise<unknown>) => {
     try {
-      await removeFiles(store.purgeExpired(), logger);
-      await outbox.expire();
+      await work();
     } catch (err) {
-      logger.error({ err }, "could not purge expired messages");
+      logger.error({ err }, `could not purge ${what}`);
     }
   };
-  const timer = setInterval(() => void purge(), intervalMs);
+  const timer = setInterval(() => {
+    void attempt("expired messages", () => removeFiles(store.purgeExpired(), logger));
+    void attempt("expired sends", () => outbox.expire());
+  }, intervalMs);
   return () => clearInterval(timer);
 }
 
