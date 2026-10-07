@@ -34,7 +34,8 @@ export type ConnectionState =
   | "replaced"
   | "stopped";
 
-export type ChatKind = "dm" | "group" | "self" | "broadcast" | "newsletter" | "other";
+export const CHAT_KINDS = ["dm", "group", "self", "broadcast", "newsletter", "other"] as const;
+export type ChatKind = (typeof CHAT_KINDS)[number];
 
 export type HistorySyncStatus = "complete" | "paused";
 

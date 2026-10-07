@@ -1,12 +1,10 @@
-import type { ChatDetail, MessagePage, Page, Chat } from "@wa/sdk";
+import { CHAT_KINDS, type ChatDetail, type MessagePage, type Page, type Chat } from "@wa/sdk";
 import { Hono } from "hono";
 import { z } from "zod";
 import { assertCan } from "../../policy";
 import { getChat, listChats, listMessages } from "../../queries";
 import { readContext, type ApiDeps, type AppEnv } from "../context";
 import { limitParam, optionalText } from "../params";
-
-const CHAT_KINDS = ["dm", "group", "self", "broadcast", "newsletter", "other"] as const;
 
 const listQuery = z.object({
   q: optionalText,

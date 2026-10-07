@@ -1,10 +1,10 @@
+import { CHAT_KINDS } from "@wa/sdk";
 import { z } from "zod";
 
 /** Output schemas: the JSON shapes of `@wa/sdk`, so structured results match the HTTP API. */
 const nullableString = z.string().nullable();
 const nullableNumber = z.number().nullable();
 
-export const CHAT_KINDS = ["dm", "group", "self", "broadcast", "newsletter", "other"] as const;
 export const MEDIA_KINDS = ["image", "video", "audio", "document", "sticker"] as const;
 
 export const chatSchema = z.object({
