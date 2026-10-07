@@ -2,7 +2,7 @@ import type { Qr, Status } from "@wa/sdk";
 import { Hono } from "hono";
 import { z } from "zod";
 import { ApiError } from "../../errors";
-import { actorOf, assertCan } from "../../policy";
+import { auditActor, assertCan } from "../../policy";
 import { readStatus } from "../../queries";
 import { AlreadyLinkedError } from "../../whatsapp/connection";
 import { readContext, type ApiDeps, type AppEnv } from "../context";
@@ -36,7 +36,7 @@ export function statusRoutes(deps: ApiDeps) {
         throw new ApiError(409, "already_linked", "WhatsApp is already linked");
       }
       deps.store.sync.clearHistoryPhases();
-      deps.store.audit.record({ ...actorOf(principal), action: relink ? "relink" : "link" });
+      deps.store.audit.record({ ...auditActor(principal), action: relink ? "relink" : "link" });
       return c.json(qrOf());
     });
 }

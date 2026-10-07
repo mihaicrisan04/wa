@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from "hono";
-import { authenticate } from "../access";
+import { authenticate } from "../tokens";
 import { ADMIN } from "../policy";
 import type { Store } from "../store";
 import type { AppEnv } from "./context";

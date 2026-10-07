@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFile, stat, writeFile } from "node:fs/promises";
-import { hashToken } from "../src/access";
+import { hashToken } from "../src/tokens";
 import { raycastTokenPath } from "../src/config";
 import { startEngine } from "../src/engine";
 import { FakeWhatsAppClient } from "../src/testing";

@@ -39,10 +39,15 @@ export interface SqlFragment {
   params: SqlParams;
 }
 
-const TRUE: SqlFragment = { sql: "1", params: {} };
+export const TRUE: SqlFragment = { sql: "1", params: {} };
+
+/** The profile whose collections bound what the principal sees; null when it sees every chat. */
+function scopingProfile(principal: Principal): string | null {
+  return principal.kind === "admin" || principal.allChats ? null : principal.profile;
+}
 
 export function seesAllChats(principal: Principal): boolean {
-  return principal.kind === "admin" || principal.allChats;
+  return scopingProfile(principal) === null;
 }
 
 /**
@@ -50,13 +55,14 @@ export function seesAllChats(principal: Principal): boolean {
  * goes through this, and membership is read live, so a change applies to the next request.
  */
 export function scopeSql(principal: Principal, column: string): SqlFragment {
-  if (principal.kind === "admin" || principal.allChats) return TRUE;
+  const profile = scopingProfile(principal);
+  if (profile === null) return TRUE;
   return {
     sql: `${column} IN (
       SELECT scope_cc.chat_jid FROM collection_chats AS scope_cc
       JOIN profile_collections AS scope_pc ON scope_pc.collection = scope_cc.collection
       WHERE scope_pc.profile = $scope_profile)`,
-    params: { scope_profile: principal.profile },
+    params: { scope_profile: profile },
   };
 }
 
@@ -76,7 +82,10 @@ export function and(...fragments: SqlFragment[]): SqlFragment {
 }
 
 /** Who to record in the audit log. */
-export function actorOf(principal: Principal): { tokenId: string | null; profile: string | null } {
+export function auditActor(principal: Principal): {
+  tokenId: string | null;
+  profile: string | null;
+} {
   return principal.kind === "admin"
     ? { tokenId: null, profile: null }
     : { tokenId: principal.tokenId, profile: principal.profile };

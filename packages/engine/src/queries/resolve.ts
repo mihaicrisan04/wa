@@ -1,7 +1,7 @@
 import type { ChatCandidate } from "@wa/sdk";
 import { jidDecode } from "@whiskeysockets/baileys";
 import { ambiguous, notFound } from "../errors";
-import { scopeSql, seesAllChats, type SqlFragment, type SqlParams } from "../policy";
+import { scopeSql, seesAllChats, TRUE, type SqlFragment, type SqlParams } from "../policy";
 import { CHAT_NAME, likePattern, type ReadContext } from "./rows";
 
 const PHONE = /^\+?[\d\s().-]+$/;
@@ -90,7 +90,7 @@ export function resolveSender(ctx: ReadContext, ref: string): string {
 
 /** Contacts `ct` the principal has met in a visible chat: as the chat, a member or a sender. */
 function visiblePeople(ctx: ReadContext): SqlFragment {
-  if (seesAllChats(ctx.principal)) return { sql: "1", params: {} };
+  if (seesAllChats(ctx.principal)) return TRUE;
   const chats = scopeSql(ctx.principal, "ch.jid");
   const groups = scopeSql(ctx.principal, "gp.group_jid");
   const messages = scopeSql(ctx.principal, "m.chat_jid");

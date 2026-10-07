@@ -1,6 +1,6 @@
 import type { BaileysEventMap } from "@whiskeysockets/baileys";
 import type { ProfileCapability } from "@wa/sdk";
-import { issueToken } from "../../src/access";
+import { issueToken } from "../../src/tokens";
 import { startEngine, type Engine, type StartEngineOptions } from "../../src/engine";
 import { FakeWhatsAppClient, makeTempHome, type TempHome } from "../../src/testing";
 import { ME, silent } from "./harness";

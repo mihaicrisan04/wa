@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { actorOf, can, type TokenPrincipal } from "../../policy";
+import { auditActor, can, type TokenPrincipal } from "../../policy";
 import { chatName, sendTarget } from "../../queries";
 import { chatRef, quote } from "../format";
 import { defineTool } from "../tool";
@@ -28,10 +28,10 @@ export const sendMessageTool = defineTool({
   async run({ to, text }, env) {
     const ctx = env.read();
     const chatJid = sendTarget(ctx, to);
-    const { profile } = actorOf(env.principal);
+    const { profile } = auditActor(env.principal);
     const row = await env.deps.outbox.enqueue(chatJid, { kind: "text", text }, profile);
     env.deps.store.audit.record({
-      ...actorOf(env.principal),
+      ...auditActor(env.principal),
       action: "send",
       chatJid,
       detail: { outboxId: row.id, kind: "text", via: "mcp" },

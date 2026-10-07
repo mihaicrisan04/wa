@@ -1,9 +1,9 @@
 import { PROFILE_CAPABILITIES, type Profile } from "@wa/sdk";
 import { Hono } from "hono";
 import { z } from "zod";
-import { BUILTIN_PROFILES } from "../../../access";
+import { BUILTIN_PROFILES } from "../../../tokens";
 import { ApiError, invalid, notFound } from "../../../errors";
-import { ADMIN, actorOf } from "../../../policy";
+import { ADMIN, auditActor } from "../../../policy";
 import type { ProfileRecord } from "../../../store";
 import type { ApiDeps, AppEnv } from "../../context";
 import { jsonBody, nameParam } from "../../params";
@@ -17,7 +17,7 @@ const createBody = z.object({
 
 export function profileRoutes({ store }: ApiDeps) {
   const audit = (action: string, profile: string) =>
-    store.audit.record({ ...actorOf(ADMIN), action, detail: { profile } });
+    store.audit.record({ ...auditActor(ADMIN), action, detail: { profile } });
 
   return new Hono<AppEnv>()
     .get("/profiles", (c) =>

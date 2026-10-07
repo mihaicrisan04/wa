@@ -1,7 +1,7 @@
 import { chmod, mkdir, rm } from "node:fs/promises";
 import { MAX_UPLOAD_BYTES } from "@wa/sdk";
 import type { Server } from "bun";
-import { ensureRaycastAccess } from "./access";
+import { ensureRaycastAccess } from "./tokens";
 import type { Backoff } from "./backoff";
 import { Backfills } from "./backfill";
 import { createApp, type ApiDeps, type App } from "./api/app";

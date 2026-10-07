@@ -3,7 +3,7 @@ import { MAX_UPLOAD_BYTES, type OutboxEntry, type Recipient, type SendResult } f
 import { Hono } from "hono";
 import { z } from "zod";
 import { invalid, notFound, tooLarge } from "../../errors";
-import { actorOf, assertCan, type Principal } from "../../policy";
+import { auditActor, assertCan, type Principal } from "../../policy";
 import { inScope, listRecipients, sendTarget, type ReadContext } from "../../queries";
 import type { OutboxRow } from "../../store";
 import type { OutgoingMessage } from "../../whatsapp/outgoing";
@@ -31,9 +31,9 @@ export function sendRoutes(deps: ApiDeps) {
       assertCan(principal, "send", "send:self");
       const { to, message } = await readSendRequest(c);
       const chatJid = sendTarget(readContext(c, deps), to);
-      const row = await deps.outbox.enqueue(chatJid, message, actorOf(principal).profile);
+      const row = await deps.outbox.enqueue(chatJid, message, auditActor(principal).profile);
       deps.store.audit.record({
-        ...actorOf(principal),
+        ...auditActor(principal),
         action: "send",
         chatJid,
         detail: { outboxId: row.id, kind: message.kind },

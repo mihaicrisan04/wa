@@ -1,9 +1,9 @@
 import type { CreatedToken, TokenInfo } from "@wa/sdk";
 import { Hono } from "hono";
 import { z } from "zod";
-import { issueToken } from "../../../access";
+import { issueToken } from "../../../tokens";
 import { notFound } from "../../../errors";
-import { ADMIN, actorOf } from "../../../policy";
+import { ADMIN, auditActor } from "../../../policy";
 import type { TokenRow } from "../../../store";
 import type { ApiDeps, AppEnv } from "../../context";
 import { jsonBody, nameParam, optionalText } from "../../params";
@@ -22,7 +22,7 @@ export function tokenRoutes({ store }: ApiDeps) {
       if (!store.profiles.get(body.profile)) throw notFound("profile not found");
       const { row, token } = issueToken(store, body.profile, body.label || null);
       store.audit.record({
-        ...actorOf(ADMIN),
+        ...auditActor(ADMIN),
         action: "token.create",
         detail: { profile: body.profile, tokenId: row.id },
       });
@@ -33,7 +33,11 @@ export function tokenRoutes({ store }: ApiDeps) {
       const row = store.tokens.get(id);
       if (!row) throw notFound("token not found");
       if (store.tokens.revoke(id)) {
-        store.audit.record({ ...actorOf(ADMIN), action: "token.revoke", detail: { tokenId: id } });
+        store.audit.record({
+          ...auditActor(ADMIN),
+          action: "token.revoke",
+          detail: { tokenId: id },
+        });
       }
       return c.json(toTokenInfo(store.tokens.get(id)!));
     });

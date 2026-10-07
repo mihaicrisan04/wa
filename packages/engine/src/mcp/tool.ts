@@ -8,7 +8,7 @@ import type { Capability } from "@wa/sdk";
 import { ZodError, type z } from "zod";
 import type { ApiDeps } from "../api/context";
 import { ApiError } from "../errors";
-import { actorOf, can, type TokenPrincipal } from "../policy";
+import { auditActor, can, type TokenPrincipal } from "../policy";
 import type { ReadContext } from "../queries";
 import { candidateLine, fenced, quote } from "./format";
 
@@ -106,7 +106,7 @@ function listedOnly(schema: z.ZodObject): StandardSchemaWithJSON {
 /** Every MCP tool call is audited: who, which tool, which chat and how much, never content. */
 function audit(env: ToolEnv, tool: string, chat: string | null, detail: Record<string, unknown>) {
   env.deps.store.audit.record({
-    ...actorOf(env.principal),
+    ...auditActor(env.principal),
     action: `mcp:${tool}`,
     chatJid: chat,
     detail,
