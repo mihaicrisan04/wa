@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { rm, stat } from "node:fs/promises";
 import { extname, join } from "node:path";
+import type { MediaKind } from "@wa/sdk";
 import { downloadMediaMessage, type WAMessage } from "@whiskeysockets/baileys";
 import { nowSeconds } from "../clock";
 import { mediaDir } from "../config";
@@ -21,7 +22,7 @@ export class MediaUnavailableError extends Error {
 
 export interface CachedMedia {
   path: string;
-  kind: string;
+  kind: MediaKind;
   mimetype: string | null;
   fileName: string | null;
   size: number;

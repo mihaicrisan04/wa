@@ -1,4 +1,4 @@
-import { SNIPPET_CLOSE, SNIPPET_OPEN } from "@wa/sdk";
+import { SNIPPET_CLOSE, SNIPPET_OPEN, type MediaKind } from "@wa/sdk";
 import type { Database } from "./db";
 import { toFtsQuery, type SearchOptions, type SearchRow } from "./search";
 
@@ -6,7 +6,7 @@ export const PLACEHOLDER_TYPE = "placeholder";
 export const REVOKED_TYPE = "revoked";
 
 export interface MediaInfo {
-  kind: string;
+  kind: MediaKind;
   mimetype: string | null;
   fileName: string | null;
   size: number | null;

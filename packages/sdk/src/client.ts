@@ -1,37 +1,38 @@
-import type {
-  ApiErrorBody,
-  AuditEntry,
-  BackfillJob,
-  Chat,
-  ChatCandidate,
-  ChatDetail,
-  ChatKind,
-  Collection,
-  CollectionDetail,
-  CreatedToken,
-  Health,
-  MediaInfo,
-  MessageContext,
-  MessagePage,
-  OutboxEntry,
-  Page,
-  Profile,
-  ProfileCapability,
-  Qr,
-  Recipient,
-  SearchHit,
-  SendResult,
-  Status,
-  TokenInfo,
+import {
+  DEFAULT_PORT,
+  MAX_UPLOAD_BYTES,
+  UPLOAD_TOO_LARGE,
+  type ApiErrorBody,
+  type ApiErrorCode,
+  type AuditEntry,
+  type BackfillJob,
+  type Chat,
+  type ChatCandidate,
+  type ChatDetail,
+  type ChatKind,
+  type Collection,
+  type CollectionDetail,
+  type CreatedToken,
+  type Health,
+  type MediaInfo,
+  type MessageContext,
+  type MessagePage,
+  type OutboxEntry,
+  type Page,
+  type Profile,
+  type ProfileCapability,
+  type Qr,
+  type Recipient,
+  type SearchHit,
+  type SendResult,
+  type Status,
+  type TokenInfo,
 } from "./types";
 
-export const DEFAULT_PORT = 7373;
-
-/** How many older messages `admin.backfill.start` asks for when `max` is left out. */
-export const BACKFILL_DEFAULT_MAX = 500;
-
-/** WhatsApp's cap for documents; the engine accepts uploads up to this size. */
-export const MAX_UPLOAD_BYTES = 2 * 1024 ** 3;
+/** The local engine's HTTP base URL. */
+export function engineUrl(port: number = DEFAULT_PORT): string {
+  return `http://127.0.0.1:${port}`;
+}
 
 export interface WaClientOptions {
   /** Defaults to the local engine on the default port. */
@@ -45,7 +46,7 @@ export interface WaClientOptions {
 export class WaApiError extends Error {
   constructor(
     readonly status: number,
-    readonly code: string,
+    readonly code: ApiErrorCode,
     message: string,
     /** For `ambiguous`: the chats the reference could mean. */
     readonly candidates: ChatCandidate[] = [],
@@ -169,32 +170,32 @@ interface RequestOptions {
 }
 
 export function createWaClient(options: WaClientOptions = {}): WaClient {
-  const baseUrl = (options.baseUrl ?? `http://127.0.0.1:${DEFAULT_PORT}`).replace(/\/+$/, "");
+  const baseUrl = (options.baseUrl ?? engineUrl()).replace(/\/+$/, "");
   const fetchImpl = options.fetch ?? ((input, init) => fetch(input, init));
   const timeoutMs = options.timeoutMs ?? 10_000;
 
-  async function send(path: string, request: RequestOptions): Promise<Response> {
+  async function request(path: string, init: RequestOptions): Promise<Response> {
     const headers: Record<string, string> = { accept: "application/json" };
     if (options.token) headers.authorization = `Bearer ${options.token}`;
     let body: RequestInit["body"];
-    if (request.json !== undefined) {
+    if (init.json !== undefined) {
       headers["content-type"] = "application/json";
-      body = JSON.stringify(request.json);
-    } else if (request.form) {
-      body = request.form;
+      body = JSON.stringify(init.json);
+    } else if (init.form) {
+      body = init.form;
     }
-    const response = await fetchImpl(`${baseUrl}${path}${queryString(request.query)}`, {
-      method: request.method ?? "GET",
+    const response = await fetchImpl(`${baseUrl}${path}${queryString(init.query)}`, {
+      method: init.method ?? "GET",
       headers,
       body,
-      signal: request.raw ? undefined : AbortSignal.timeout(timeoutMs),
+      signal: init.raw ? undefined : AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) throw toApiError(response.status, await response.json().catch(() => null));
     return response;
   }
 
-  async function call<T>(path: string, request: RequestOptions = {}): Promise<T> {
-    return (await (await send(path, request)).json()) as T;
+  async function call<T>(path: string, init: RequestOptions = {}): Promise<T> {
+    return (await (await request(path, init)).json()) as T;
   }
 
   const enc = encodeURIComponent;
@@ -246,7 +247,7 @@ export function createWaClient(options: WaClientOptions = {}): WaClient {
     search: (params) => call("/v1/search", { query: { ...params } }),
     media: (chat, id) => call(`/v1/media/${enc(chat)}/${enc(id)}`),
     downloadMedia: async (chat, id) => {
-      const response = await send(`/v1/media/${enc(chat)}/${enc(id)}`, {
+      const response = await request(`/v1/media/${enc(chat)}/${enc(id)}`, {
         query: { download: 1 },
         raw: true,
       });
@@ -262,7 +263,7 @@ export function createWaClient(options: WaClientOptions = {}): WaClient {
     send: (input) => call("/v1/send", { method: "POST", json: input }),
     sendFile: async (input) => {
       if (input.file.size > MAX_UPLOAD_BYTES) {
-        throw new WaApiError(413, "too_large", "WhatsApp only takes files up to 2 GB");
+        throw new WaApiError(413, "too_large", UPLOAD_TOO_LARGE);
       }
       const form = new FormData();
       form.set("to", input.to);

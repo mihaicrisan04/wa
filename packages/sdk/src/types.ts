@@ -1,10 +1,40 @@
+export const DEFAULT_PORT = 7373;
+
+/** How many older messages `admin.backfill.start` asks for when `max` is left out. */
+export const BACKFILL_DEFAULT_MAX = 500;
+
+/** WhatsApp's cap for documents; the engine accepts uploads up to this size. */
+export const MAX_UPLOAD_BYTES = 2 * 1024 ** 3;
+export const UPLOAD_TOO_LARGE = "WhatsApp only takes files up to 2 GB";
+
 export interface Health {
   ok: boolean;
   version: string;
 }
 
+export type ApiErrorCode =
+  | "already_linked"
+  | "ambiguous"
+  | "builtin"
+  | "exists"
+  | "forbidden"
+  | "forbidden_host"
+  | "forbidden_origin"
+  | "internal"
+  | "invalid_request"
+  | "not_found"
+  | "not_linked"
+  | "not_media"
+  | "offline"
+  | "token_in_query"
+  | "too_large"
+  | "unauthorized"
+  | "view_once"
+  /** The SDK's own: a failed response without a JSON error body. */
+  | "http_error";
+
 export interface ApiErrorBody {
-  error: { code: string; message: string; candidates?: ChatCandidate[] };
+  error: { code: ApiErrorCode; message: string; candidates?: ChatCandidate[] };
 }
 
 export const CAPABILITIES = [
@@ -24,24 +54,44 @@ export const PROFILE_CAPABILITIES = CAPABILITIES.filter(
 );
 export type ProfileCapability = (typeof PROFILE_CAPABILITIES)[number];
 
-export type ConnectionState =
+export const CONNECTION_STATES = [
   /** No credentials yet; idle until linked. */
-  | "not_linked"
+  "not_linked",
   /** Socket open for pairing, QR codes are being issued. */
-  | "linking"
-  | "connecting"
-  | "open"
-  | "reconnecting"
+  "linking",
+  "connecting",
+  "open",
+  "reconnecting",
   /** Logged out from the phone; credentials were moved aside. */
-  | "needs_link"
+  "needs_link",
   /** Another session took over; never reconnects on its own. */
-  | "replaced"
-  | "stopped";
+  "replaced",
+  "stopped",
+] as const;
+export type ConnectionState = (typeof CONNECTION_STATES)[number];
 
 export const CHAT_KINDS = ["dm", "group", "self", "broadcast", "newsletter", "other"] as const;
 export type ChatKind = (typeof CHAT_KINDS)[number];
 
-export type HistorySyncStatus = "complete" | "paused";
+export const MEDIA_KINDS = ["image", "video", "audio", "document", "sticker"] as const;
+export type MediaKind = (typeof MEDIA_KINDS)[number];
+
+/** The message types the engine names; other WhatsApp content keeps its own type name. */
+export const MESSAGE_TYPES = [
+  "text",
+  ...MEDIA_KINDS,
+  "location",
+  "contact",
+  "poll",
+  "event",
+  /** Content still on its way from the phone. */
+  "placeholder",
+  "revoked",
+] as const;
+export type MessageType = (typeof MESSAGE_TYPES)[number];
+
+export const HISTORY_SYNC_STATUSES = ["complete", "paused"] as const;
+export type HistorySyncStatus = (typeof HISTORY_SYNC_STATUSES)[number];
 
 /** One WhatsApp history sync type (`initial_bootstrap`, `recent`, `full`, `push_name`…). */
 export interface HistoryPhase {
@@ -57,10 +107,7 @@ export interface HistoryPhase {
 export interface HistorySync {
   /** 0-100 of the furthest phase (full, else recent), null before any chunk. */
   progress: number | null;
-  /**
-   * `complete` once the furthest phase is done, `paused` when WhatsApp stopped sending before
-   * that; null while syncing or before it started. `isLatest` alone does not mean done.
-   */
+  /** Of the furthest phase: null while syncing or before it started. */
   status: HistorySyncStatus | null;
   updatedAt: number | null;
   /** Oldest first. */
@@ -138,6 +185,7 @@ export interface Message {
   senderName: string | null;
   /** Unix seconds. */
   ts: number;
+  /** One of `MESSAGE_TYPES`, or the type name of content the engine doesn't name. */
   type: string;
   text: string | null;
   caption: string | null;
@@ -179,7 +227,7 @@ export const SNIPPET_CLOSE = "\u0003";
 export interface MediaInfo {
   chat: string;
   id: string;
-  kind: string;
+  kind: MediaKind;
   mimetype: string | null;
   fileName: string | null;
   size: number | null;
@@ -263,17 +311,17 @@ export interface AuditEntry {
   detail: Record<string, unknown> | null;
 }
 
-/**
- * Why a backfill stopped: `max` reached, `empty` (WhatsApp has nothing older), `timeout` (the
- * phone did not answer), `no_anchor` (nothing stored in the chat to page back from),
- * `disconnected`, `stopped` (the engine shut down) or `failed`.
- */
+/** Why a backfill stopped. */
 export type BackfillStopReason =
   | "max"
+  /** WhatsApp has nothing older. */
   | "empty"
+  /** The phone did not answer. */
   | "timeout"
+  /** Nothing stored in the chat to page back from. */
   | "no_anchor"
   | "disconnected"
+  /** The engine shut down. */
   | "stopped"
   | "failed";
 
