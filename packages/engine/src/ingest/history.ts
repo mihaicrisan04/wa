@@ -32,7 +32,7 @@ export interface HistoryPage {
   chats: Map<string, number>;
 }
 
-export function syncTypeName(type: proto.HistorySync.HistorySyncType | null | undefined): string {
+function syncTypeName(type: proto.HistorySync.HistorySyncType | null | undefined): string {
   if (type === null || type === undefined) return "unknown";
   return (HistorySyncType[type] ?? `type_${type}`).toLowerCase();
 }
@@ -58,7 +58,7 @@ export function ingestHistory(
     return { sessionId: data.peerDataRequestSessionId ?? null, chats: chatCounts(messages) };
   }
   updatePhase(ctx, syncTypeName(data.syncType), (phase) => ({
-    ...phase,
+    ...(phase.explicit === false ? resumed(phase) : phase),
     progress: data.progress ?? phase.progress,
     chunks: phase.chunks + 1,
   }));
@@ -92,6 +92,11 @@ function updatePhase(
   };
   phases[name] = { ...change(current), at: nowSeconds() };
   ctx.store.sync.set(HISTORY_PHASES_KEY, phases);
+}
+
+/** A chunk after a pause Baileys guessed from silence: the sync was not paused after all. */
+function resumed(phase: HistoryPhase): HistoryPhase {
+  return { ...phase, status: null, explicit: null };
 }
 
 function chatCounts(messages: Normalized[]): Map<string, number> {

@@ -138,7 +138,6 @@ export { GroupCache } from "./groups";
 export {
   HISTORY_PHASES_KEY,
   readHistoryPhases,
-  syncTypeName,
   type HistoryPage,
   type HistoryPhase,
   type HistoryPhases,

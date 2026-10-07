@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { proto } from "@whiskeysockets/baileys";
 import { readHistoryPhases, type HistoryPage } from "../src/ingest";
+import { readHistorySync } from "../src/queries";
 import { buildChat, buildMessage, content, historySet } from "../src/testing";
 import {
   ANA_LID,
@@ -190,6 +191,45 @@ describe("messaging-history.set", () => {
         at: expect.any(Number),
       },
     });
+  });
+
+  test("a pause Baileys guessed from silence clears once chunks resume", async () => {
+    const recent = (progress: number) => ({
+      "messaging-history.set": historySet({ syncType: HistorySyncType.RECENT, progress }),
+    });
+    await h.emit(recent(40));
+    await h.emit({
+      "messaging-history.status": {
+        syncType: HistorySyncType.RECENT,
+        status: "paused",
+        explicit: false,
+      },
+    });
+    expect(readHistorySync(h.store).status).toBe("paused");
+
+    // Baileys never reports RECENT complete after its own pause; reaching 100% has to say it
+    await h.emit(recent(70));
+    expect(readHistorySync(h.store)).toMatchObject({ progress: 70, status: null });
+    await h.emit(recent(100));
+    expect(readHistorySync(h.store)).toMatchObject({
+      progress: 100,
+      status: "complete",
+      phases: [{ syncType: "recent", progress: 100, status: null, chunks: 3 }],
+    });
+  });
+
+  test("an explicit status survives later chunks", async () => {
+    await h.emit({
+      "messaging-history.status": {
+        syncType: HistorySyncType.FULL,
+        status: "complete",
+        explicit: true,
+      },
+    });
+    await h.emit({
+      "messaging-history.set": historySet({ syncType: HistorySyncType.FULL, progress: 90 }),
+    });
+    expect(readHistoryPhases(h).full).toMatchObject({ status: "complete", explicit: true });
   });
 
   test("past participants are remembered as having left", async () => {
