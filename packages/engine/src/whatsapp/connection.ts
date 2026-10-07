@@ -148,11 +148,12 @@ export class WhatsAppConnection {
     try {
       client = await this.options.createClient(auth.state);
     } catch (err) {
+      if (this.isRetired(generation)) return;
       this.logger.error({ err }, "could not create the WhatsApp socket");
-      this.scheduleReconnect();
+      this.scheduleReconnect(state);
       return;
     }
-    if (generation !== this.generation) {
+    if (this.isRetired(generation)) {
       await endClient(client);
       return;
     }
@@ -160,6 +161,11 @@ export class WhatsAppConnection {
     this.socket = client;
     this.detachSocket = client.ev.process((events) => this.handleEvents(client, events));
     for (const listener of this.clientListeners) await listener(client);
+  }
+
+  /** True once `stop()`, a relink or a newer attempt has superseded this one. */
+  private isRetired(generation: number): boolean {
+    return generation !== this.generation || this.state === "stopped";
   }
 
   private async handleEvents(
@@ -223,7 +229,7 @@ export class WhatsAppConnection {
     }
   }
 
-  private scheduleReconnect(): void {
+  private scheduleReconnect(state: "linking" | "connecting" = "connecting"): void {
     this.reconnectAttempt++;
     const delay = Math.min(
       this.backoff.baseMs * 2 ** (this.reconnectAttempt - 1),
@@ -233,7 +239,7 @@ export class WhatsAppConnection {
     this.logger.info({ delay, attempt: this.reconnectAttempt }, "reconnecting to WhatsApp");
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      void this.connect("connecting");
+      void this.connect(state);
     }, delay);
   }
 

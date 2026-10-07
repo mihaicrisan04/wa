@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { DisconnectReason } from "@whiskeysockets/baileys";
 import pino from "pino";
 import { FakeWhatsAppClient, makeTempHome, type FakeIdentity, type TempHome } from "../src/testing";
+import type { ClientFactory } from "../src/whatsapp/client";
 import { AlreadyLinkedError, WhatsAppConnection } from "../src/whatsapp/connection";
 
 const ME: FakeIdentity = { id: "40700000001:7@s.whatsapp.net", lid: "123456789:7@lid", name: "Me" };
@@ -12,15 +13,17 @@ let temp: TempHome;
 let clients: FakeWhatsAppClient[];
 let connection: WhatsAppConnection;
 
-function newConnection(): WhatsAppConnection {
+function newFakeClient(): FakeWhatsAppClient {
+  const client = new FakeWhatsAppClient();
+  clients.push(client);
+  return client;
+}
+
+function newConnection(createClient: ClientFactory = newFakeClient): WhatsAppConnection {
   return new WhatsAppConnection({
     home: temp.home,
     logger: pino({ level: "silent" }),
-    createClient: () => {
-      const client = new FakeWhatsAppClient();
-      clients.push(client);
-      return client;
-    },
+    createClient,
     backoff: { baseMs: 5, maxMs: 20 },
   });
 }
@@ -197,5 +200,63 @@ describe("disconnects", () => {
     await Bun.sleep(40);
     expect(connection.status().state).toBe("stopped");
     expect(clients).toHaveLength(2);
+  });
+});
+
+describe("socket creation failures", () => {
+  let attempts: Array<{ resolve: () => void; reject: (err: Error) => void }>;
+
+  /** Each socket creation waits until the test resolves or rejects it. */
+  function controlledFactory(): ClientFactory {
+    return () =>
+      new Promise<FakeWhatsAppClient>((resolve, reject) => {
+        attempts.push({ resolve: () => resolve(newFakeClient()), reject });
+      });
+  }
+
+  beforeEach(async () => {
+    attempts = [];
+    connection = newConnection(controlledFactory());
+    await connection.start();
+  });
+
+  test("a failure after stop does not reconnect", async () => {
+    const linking = connection.link();
+    await waitFor(() => attempts.length === 1);
+    await connection.stop();
+    attempts[0]!.reject(new Error("socket failed"));
+    await linking;
+    await Bun.sleep(40);
+
+    expect(connection.status().state).toBe("stopped");
+    expect(attempts).toHaveLength(1);
+    expect(clients).toHaveLength(0);
+  });
+
+  test("a creation that finishes after stop is ended right away", async () => {
+    const linking = connection.link();
+    await waitFor(() => attempts.length === 1);
+    await connection.stop();
+    attempts[0]!.resolve();
+    await linking;
+
+    expect(connection.client()).toBeNull();
+    expect(clients[0]!.ended).toBe(true);
+  });
+
+  test("a failed linking attempt retries as linking", async () => {
+    const linking = connection.link();
+    await waitFor(() => attempts.length === 1);
+    attempts[0]!.reject(new Error("socket failed"));
+    await linking;
+    expect(connection.status().state).toBe("reconnecting");
+
+    await waitFor(() => attempts.length === 2);
+    expect(connection.status().state).toBe("linking");
+    attempts[1]!.resolve();
+    await waitFor(() => connection.client() !== null);
+    latest().showQr("2@qr-retry");
+    await settle();
+    expect(connection.status()).toMatchObject({ state: "linking", qr: "2@qr-retry" });
   });
 });
