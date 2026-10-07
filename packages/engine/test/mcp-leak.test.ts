@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { PROFILE_CAPABILITIES } from "@wa/sdk";
 import { authenticate } from "../src/tokens";
-import { chatName, type ReadContext } from "../src/queries";
+import { chatNames, type ReadContext } from "../src/queries";
 import { startApi, type ApiHarness } from "./support/api";
 import { BOB_PN, EVE_PN, ME_PN } from "./support/jids";
 import { connectMcp, type McpSession } from "./support/mcp";
@@ -159,8 +159,9 @@ test("chat names are looked up through the scope too", () => {
   const { store } = api.engine;
   const principal = authenticate(store, masterToken)!;
   const ctx = { store, principal } as ReadContext;
-  expect(chatName(ctx, MASTER)).toBe("Master PP");
-  expect(chatName(ctx, SECRET)).toBeNull();
+  const names = chatNames(ctx, [MASTER, SECRET]);
+  expect(names.get(MASTER)).toBe("Master PP");
+  expect(names.has(SECRET)).toBe(false);
 });
 
 describe("a collection-scoped session never sees outside its scope", () => {

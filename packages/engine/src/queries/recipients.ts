@@ -1,20 +1,16 @@
 import type { Recipient } from "@wa/sdk";
 import { isJidGroup, isLidUser, isPnUser } from "@whiskeysockets/baileys";
-import { ApiError, invalid, notFound, notLinked } from "../errors";
+import { z } from "zod";
+import { forbidden, invalid, notFound, notLinked } from "../errors";
 import { can, scopeSql, seesAllChats, type SqlParams } from "../policy";
+import { limitParam, optionalText } from "./fields";
 import { inScope, resolveChat } from "./resolve";
-import { CHAT_NAME, likePattern, type ReadContext } from "./rows";
+import { CHAT_NAME, likePattern, RECENCY, type ReadContext } from "./rows";
 
-export interface RecipientOptions {
-  q?: string;
-  limit: number;
-}
+export const recipientsQuery = z.object({ q: optionalText, limit: limitParam(50, 500) });
+export type RecipientOptions = z.output<typeof recipientsQuery>;
 
-/**
- * Who the principal may send to, most recent first: visible people and groups, plus (for
- * all-chats principals) address-book contacts never chatted with. With only `send:self`, just
- * the own chat.
- */
+/** Visible people and groups by recency, then (seeing all chats) unchatted contacts. */
 export function listRecipients(ctx: ReadContext, options: RecipientOptions): Recipient[] {
   if (!can(ctx.principal, "send")) return selfRecipient(ctx);
   const scope = scopeSql(ctx.principal, "ch.jid");
@@ -25,7 +21,7 @@ export function listRecipients(ctx: ReadContext, options: RecipientOptions): Rec
        FROM chats AS ch LEFT JOIN contacts AS ct ON ct.jid = ch.jid
        WHERE ch.kind IN ('dm', 'group', 'self') AND (${scope.sql})
          AND ($pattern IS NULL OR ${CHAT_NAME} LIKE $pattern ESCAPE '\\' OR ch.jid LIKE $pattern ESCAPE '\\')
-       ORDER BY coalesce(ch.last_message_at, 0) DESC, ch.jid
+       ORDER BY ${RECENCY} DESC, ch.jid
        LIMIT $limit`,
     )
     .all({ ...scope.params, pattern, limit: options.limit });
@@ -45,6 +41,7 @@ export function listRecipients(ctx: ReadContext, options: RecipientOptions): Rec
   return [...chats, ...contacts];
 }
 
+/** With only `send:self`, the own chat is the one recipient. */
 function selfRecipient(ctx: ReadContext): Recipient[] {
   const me = ctx.identity.me();
   if (!me) return [];
@@ -59,10 +56,7 @@ function selfRecipient(ctx: ReadContext): Recipient[] {
   ];
 }
 
-/**
- * The chat a send goes to. `send:self` reaches only the own chat ("self" or the exact own jid,
- * never a device jid); anything else needs `send` and a chat in scope.
- */
+/** `send:self` reaches only "self" or the exact own jid; anything else needs `send` and scope. */
 export function sendTarget(ctx: ReadContext, to: string): string {
   const own = ctx.identity.own;
   const input = to.trim();
@@ -74,7 +68,7 @@ export function sendTarget(ctx: ReadContext, to: string): string {
     throw notFound("chat not found");
   }
   if (!can(ctx.principal, "send")) {
-    throw new ApiError(403, "forbidden", "this token can only send to yourself");
+    throw forbidden("this token can only send to yourself");
   }
   const jid = resolveChat(ctx, input, { stored: false });
   if (!isPnUser(jid) && !isLidUser(jid) && !isJidGroup(jid)) {

@@ -10,9 +10,17 @@ export interface ReadContext {
   identity: Identity;
 }
 
-export const CHAT_NAME = "coalesce(ch.name, ct.name, ct.verified_name, ct.push_name)";
+/** The name a contact goes by; `alias` is the contacts table's alias in the query. */
+export function contactName(alias: string): string {
+  return `coalesce(${alias}.name, ${alias}.verified_name, ${alias}.push_name)`;
+}
 
-/** `ch` with its display name; DMs take it from the contact. */
+/** A chat `ch`'s display name; DMs take it from their contact `ct`. */
+export const CHAT_NAME = `coalesce(ch.name, ${contactName("ct")})`;
+
+/** Chats `ch` most recent first sort by this, never-active ones last. */
+export const RECENCY = "coalesce(ch.last_message_at, 0)";
+
 export const CHAT_SELECT = `
   SELECT ch.jid, ch.kind, ${CHAT_NAME} AS name, ch.archived, ch.pinned, ch.mute_end_time,
     ch.unread_count, ch.last_message_at, ch.ephemeral_expiration, ch.created_at
@@ -68,16 +76,13 @@ export interface MessageRecordRow {
   view_once: number;
 }
 
-/**
- * Messages `m` as clients may see them. `raw` is never selected; a quote's id, chat and sender
- * only come along when the quoted chat is visible too ("reply privately" quotes another chat).
- */
+/** Messages `m` as clients see them: never `raw`, and a quote's ids only from a visible chat. */
 export function messageSelect(principal: Principal): SqlFragment {
   const quoteScope = scopeSql(principal, "m.quoted_chat_jid");
   return {
     sql: `
       SELECT m.rowid, m.chat_jid, m.id, m.from_me, m.sender_jid,
-        coalesce(sc.name, sc.verified_name, sc.push_name) AS sender_name,
+        ${contactName("sc")} AS sender_name,
         m.ts, m.type, m.text, m.caption, m.file_name,
         m.quoted_id, m.quoted_chat_jid, m.quoted_participant, m.quoted_text,
         CASE WHEN m.quoted_chat_jid IS NULL OR m.quoted_chat_jid = m.chat_jid

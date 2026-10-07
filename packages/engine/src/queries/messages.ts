@@ -1,18 +1,23 @@
 import type { Message, MessageContext, MessagePage } from "@wa/sdk";
+import { z } from "zod";
 import { notFound } from "../errors";
 import { and, scopeSql, type SqlFragment, type SqlParams } from "../policy";
 import { nowSeconds } from "../clock";
 import { encodeCursor, parseBound, type Position } from "./cursor";
-import { resolveChat } from "./resolve";
+import { limitParam, optionalText } from "./fields";
 import { messageSelect, toMessage, type MessageRecordRow, type ReadContext } from "./rows";
 
-export interface MessageListOptions {
-  before?: string;
-  after?: string;
+export const messageListQuery = z.object({
+  before: optionalText,
+  after: optionalText,
   /** A message id to center the page on. */
-  around?: string;
-  limit: number;
-}
+  around: optionalText,
+  limit: limitParam(50, 200),
+});
+export type MessageListOptions = z.output<typeof messageListQuery>;
+
+/** How many messages `getMessage` adds on each side. */
+export const contextParam = z.coerce.number().int().min(0).max(50).default(0);
 
 type Order = "ASC" | "DESC";
 
@@ -53,25 +58,27 @@ function beyond(side: "<" | ">", [ts, rowid]: Position, name: string): SqlFragme
 
 const positionOf = (row: MessageRecordRow): Position => [row.ts, row.rowid];
 
-/** One page of a chat, oldest first, with cursors to walk further either way. */
+/** One page of a visible chat, oldest first, with cursors to walk further either way. */
 export function listMessages(
   ctx: ReadContext,
-  ref: string,
+  chatJid: string,
   options: MessageListOptions,
 ): MessagePage {
-  const chat = inChat(resolveChat(ctx, ref));
+  const chat = inChat(chatJid);
   const rows = options.around
     ? pageAround(ctx, chat, options.around, options.limit)
     : pageBetween(ctx, chat, options);
 
-  const [first, last] = [rows.at(0), rows.at(-1)];
-  const hasMore = (side: "<" | ">", row: MessageRecordRow | undefined) =>
-    row !== undefined &&
-    selectMessages(ctx, and(chat, beyond(side, positionOf(row), "edge")), "ASC", 1).length > 0;
+  const cursorBeyond = (side: "<" | ">", row: MessageRecordRow | undefined): string | null => {
+    if (!row) return null;
+    const edge = beyond(side, positionOf(row), "edge");
+    const more = selectMessages(ctx, and(chat, edge), "ASC", 1).length > 0;
+    return more ? encodeCursor(positionOf(row)) : null;
+  };
   return {
     messages: rows.map(toMessage),
-    older: hasMore("<", first) ? encodeCursor(positionOf(first!)) : null,
-    newer: hasMore(">", last) ? encodeCursor(positionOf(last!)) : null,
+    older: cursorBeyond("<", rows.at(0)),
+    newer: cursorBeyond(">", rows.at(-1)),
   };
 }
 
@@ -110,14 +117,14 @@ function pageBetween(
   return selectMessages(ctx, and(...bounds), "DESC", limit).reverse();
 }
 
-/** A message with up to `context` messages on each side. */
+/** A visible message with up to `context` messages on each side. */
 export function getMessage(
   ctx: ReadContext,
-  ref: string,
+  chatJid: string,
   id: string,
   context: number,
 ): MessageContext {
-  const chat = inChat(resolveChat(ctx, ref));
+  const chat = inChat(chatJid);
   const row = findMessage(ctx, chat, id);
   const position = positionOf(row);
   const before = context
