@@ -22,6 +22,7 @@ async function run(argv: string[], env: Record<string, string | undefined>) {
     err: (line) => err.push(line),
     env,
     pollMs: 5,
+    historyIdleMs: 50,
   });
   return { code, out: out.join("\n"), err: err.join("\n") };
 }
@@ -45,6 +46,8 @@ describe("argument checks happen before talking to the engine", () => {
     [["tokens", "create"], "expected <profile>"],
     [["read"], "which chat?"],
     [["search"], "what to search for?"],
+    [["backfill"], "which chat?"],
+    [["backfill", "Ana", "--max", "0"], "--max must be a positive number"],
     [["chats", "--kind", "nope"], "--kind must be one of"],
     [["chats", "--limit", "0"], "--limit must be a positive number"],
     [["status", "--bogus"], "wa status:"],
