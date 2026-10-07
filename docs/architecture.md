@@ -64,13 +64,13 @@ WhatsApp addresses the same person either as `<n>@s.whatsapp.net` (phone number)
 ### Ingest
 
 - Messages are upserted on `(chat, id)`: a placeholder (undecryptable stub) is replaced when the content arrives; history timestamps (`Long`) go through `toNumber`.
-- Edits and revokes apply only when they come from the original sender (or, for revokes in groups, an admin). Reactions are not stored.
+- Edits and revokes apply only when they come from the original sender (or, for revokes in groups, an admin). A revoke that arrives before its message can be checked waits for it, and the message is stored as a tombstone if the revoke was genuine. Reactions are not stored.
 - Delete-for-me and chat clears delete rows, search entries and cached media. Revokes keep a tombstone without content. Disappearing messages are purged after they expire. View-once media is never downloaded and stories (`status@broadcast`) are not ingested.
 - Each message keeps its `raw` WebMessageInfo (thumbnails stripped). It never leaves the engine; `wa reindex` re-derives every row from it.
 
 ### History
 
-The first sync after linking arrives as large `messaging-history.set` batches; WhatsApp reports completion separately (`complete` or `paused`), per phase. Progress and status are stored and shown by `wa status`, `wa link`, Raycast's Status command and the MCP `status` tool. `wa backfill <chat>` asks the phone for older messages 50 at a time; the answers arrive asynchronously as on-demand history batches.
+The first sync after linking arrives as large `messaging-history.set` batches; WhatsApp reports completion separately (`complete` or `paused`), per phase; the sync as a whole is complete only once the full phase is. Progress and status are stored and shown by `wa status`, `wa link`, Raycast's Status command and the MCP `status` tool. `wa backfill <chat>` asks the phone for older messages 50 at a time; the answers arrive asynchronously as on-demand history batches.
 
 ### Outbox
 
