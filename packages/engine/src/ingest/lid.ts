@@ -1,78 +1,31 @@
 import {
-  isJidBroadcast,
-  isJidGroup,
-  isJidNewsletter,
   isLidUser,
   isPnUser,
   jidDecode,
   jidNormalizedUser,
-  type BaileysEventMap,
   type LIDMapping,
   type WAMessageKey,
 } from "@whiskeysockets/baileys";
 import type { Logger } from "../logger";
-import type { ChatKind, Store } from "../store";
+import type { Store } from "../store";
 import type { WhatsAppClient } from "../whatsapp/client";
 import type { OwnIdentity } from "../whatsapp/connection";
-import type { JidResolver } from "../whatsapp/normalize";
+import type { Batch, IngestContext } from "./context";
 
-export type Batch = Partial<BaileysEventMap>;
 type Jid = string | null | undefined;
 
-/**
- * Canonical jids: a person or 1:1 chat is keyed by its phone-number jid once the LID mapping is
- * known, else by its LID. Learning a mapping later merges the LID-keyed data into the PN.
- */
-export class Identity implements JidResolver {
-  constructor(
-    private readonly store: Store,
-    readonly own: OwnIdentity | null,
-  ) {}
-
-  me(): string | null {
-    return this.own?.pn ?? null;
-  }
-
-  user(jid: string): string {
-    const normalized = jidNormalizedUser(jid) || jid;
-    if (!isLidUser(normalized)) return normalized;
-    return this.store.identity.pnForLid(normalized) ?? normalized;
-  }
-
-  chat(jid: string): string {
-    const normalized = jidNormalizedUser(jid) || jid;
-    return this.store.identity.chatForAlias(normalized) ?? this.user(normalized);
-  }
-
-  kindOf(chatJid: string): ChatKind {
-    if (chatJid === this.own?.pn || chatJid === this.own?.lid) return "self";
-    if (isJidGroup(chatJid)) return "group";
-    if (isJidNewsletter(chatJid)) return "newsletter";
-    if (isJidBroadcast(chatJid)) return "broadcast";
-    if (isPnUser(chatJid) || isLidUser(chatJid)) return "dm";
-    return "other";
-  }
-
-  /** Records a mapping; when it is new, folds everything keyed by the LID into the PN. */
-  learn(mapping: LIDMapping): string[] {
-    const pair = pairOf(mapping.lid, mapping.pn);
-    if (!pair) return [];
-    const { lid, pn } = pair;
-    const { identity, media, messages, pendingRevokes, chats, participants, contacts } = this.store;
-    if (!identity.setMapping(lid, pn)) return [];
-    messages.moveChat(lid, pn);
-    pendingRevokes.moveChat(lid, pn);
-    const orphanedFiles = media.moveChat(lid, pn);
-    chats.merge(lid, pn, this.kindOf(pn));
-    identity.repointAliases(lid, pn);
-    identity.setAlias(lid, pn);
-    messages.renameUser(lid, pn);
-    pendingRevokes.renameUser(lid, pn);
-    participants.renameUser(lid, pn);
-    contacts.merge(lid, pn);
-    contacts.upsert(pn, { lid, phone: phoneOf(pn) });
-    return orphanedFiles;
-  }
+/** Records a mapping; when it is new, folds everything keyed by the LID into the PN, atomically. */
+export function learnMapping(ctx: IngestContext, mapping: LIDMapping): void {
+  const pair = pairOf(mapping.lid, mapping.pn);
+  if (!pair) return;
+  const { lid, pn } = pair;
+  const { store } = ctx;
+  store.transaction(() => {
+    if (!store.identity.setMapping(lid, pn)) return;
+    ctx.orphan(...store.moveChat(lid, pn, ctx.identity.kindOf(pn)));
+    store.renameUser(lid, pn);
+    store.contacts.upsert(pn, { lid, phone: phoneOf(pn) });
+  });
 }
 
 export function phoneOf(pnJid: string): string | null {

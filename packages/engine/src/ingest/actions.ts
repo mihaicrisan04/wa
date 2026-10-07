@@ -149,8 +149,7 @@ function foldEdit(message: WAMessage, edited: proto.IMessage): void {
 function applyRevoke(ctx: IngestContext, row: MessageRow, deletedAt: number): void {
   const key = { chatJid: row.chat_jid, id: row.id };
   ctx.store.messages.tombstone(key, deletedAt, revokedRaw(row.raw));
-  const file = ctx.store.media.remove(key);
-  if (file) ctx.orphanedFiles.push(file);
+  ctx.orphan(ctx.store.media.remove(key));
 }
 
 /** Fails closed: a revoke whose target's sender is unknown waits for a copy that names it. */

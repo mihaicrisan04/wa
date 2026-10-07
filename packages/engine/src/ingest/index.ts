@@ -5,12 +5,13 @@ import type { Store } from "../store";
 import type { WhatsAppClient } from "../whatsapp/client";
 import type { OwnIdentity } from "../whatsapp/connection";
 import { chatOf } from "../whatsapp/normalize";
+import { Identity } from "../whatsapp/identity";
 import { parseRaw } from "../whatsapp/raw";
 import { deleteChats, ingestChat, ingestChatUpdate, ingestContact } from "./chats-contacts";
-import type { IngestContext } from "./context";
+import { ingestContext, type Batch, type IngestContext } from "./context";
 import { GroupCache, ingestGroup, ingestParticipantsUpdate } from "./groups";
 import { ingestHistory, recordHistoryStatus, type HistoryPage } from "./history";
-import { Identity, lookupLids, mappingsIn, unmappedLids, type Batch } from "./lid";
+import { learnMapping, lookupLids, mappingsIn, unmappedLids } from "./lid";
 import {
   applyActions,
   carriersOf,
@@ -82,16 +83,11 @@ export class Ingest {
       mappings.push(...(await lookupLids(client, unknown, logger)));
     }
 
-    const ctx: IngestContext = {
-      store,
-      identity: new Identity(store, me),
-      logger,
-      orphanedFiles: [],
-    };
+    const ctx = ingestContext(store, new Identity(store, me), logger);
     let page: HistoryPage | null;
     try {
       page = store.transaction(() => {
-        for (const mapping of mappings) ctx.orphanedFiles.push(...ctx.identity.learn(mapping));
+        for (const mapping of mappings) learnMapping(ctx, mapping);
         return apply(ctx, batch);
       });
     } catch (err) {
@@ -135,5 +131,4 @@ function apply(ctx: IngestContext, batch: Batch): HistoryPage | null {
 }
 
 export type { HistoryPage } from "./history";
-export { Identity } from "./lid";
 export { reindex, type ReindexResult } from "./reindex";

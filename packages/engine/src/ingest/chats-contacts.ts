@@ -36,8 +36,7 @@ export function deleteChats(ctx: IngestContext, ids: string[]): void {
   const { store } = ctx;
   for (const id of ids) {
     const jid = ctx.identity.chat(id);
-    ctx.orphanedFiles.push(...store.media.removeChat(jid));
-    store.messages.deleteChat(jid);
+    ctx.orphan(...store.clearChat(jid));
     store.participants.deleteGroup(jid);
     store.chats.delete(jid);
   }

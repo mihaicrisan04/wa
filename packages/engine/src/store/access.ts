@@ -60,6 +60,18 @@ export class CollectionsRepo {
     );
   }
 
+  /** Every collection holding chat `from` holds `to` instead. */
+  moveChat(from: string, to: string): void {
+    this.db
+      .query(
+        `INSERT INTO collection_chats (collection, chat_jid)
+         SELECT collection, $to FROM collection_chats WHERE chat_jid = $from
+         ON CONFLICT DO NOTHING`,
+      )
+      .run({ from, to });
+    this.db.query("DELETE FROM collection_chats WHERE chat_jid = $from").run({ from });
+  }
+
   chats(name: string): string[] {
     return this.db
       .query<{ chat_jid: string }, { name: string }>(

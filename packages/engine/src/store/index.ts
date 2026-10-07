@@ -1,12 +1,12 @@
 import { CollectionsRepo, ProfilesRepo, TokensRepo } from "./access";
 import { AuditRepo } from "./audit";
-import { ChatsRepo } from "./chats";
+import { ChatsRepo, type ChatKind } from "./chats";
 import { ContactsRepo } from "./contacts";
 import { nowSeconds } from "../clock";
 import { openDatabase, type Database } from "./db";
 import { IdentityRepo } from "./identity";
 import { MediaRepo } from "./media";
-import { MessagesRepo } from "./messages";
+import { MessagesRepo, type MessageKeyRef } from "./messages";
 import { OutboxRepo } from "./outbox";
 import { ParticipantsRepo } from "./participants";
 import { PENDING_REVOKE_TTL, PendingRevokesRepo } from "./pending-revokes";
@@ -53,6 +53,53 @@ export class Store {
     return this.db.transaction(work).immediate();
   }
 
+  /** Deletes a message with its search entry and media; returns the cached file to remove. */
+  deleteMessage(key: MessageKeyRef): string | null {
+    return this.transaction(() => {
+      const file = this.media.remove(key);
+      this.messages.delete(key);
+      return file;
+    });
+  }
+
+  /** Deletes every message of a chat with its media; returns the cached files to remove. */
+  clearChat(chatJid: string): string[] {
+    return this.transaction(() => {
+      const files = this.media.removeChat(chatJid);
+      this.messages.deleteChat(chatJid);
+      return files;
+    });
+  }
+
+  /**
+   * Folds chat `from` into `to`: messages (the copy that knows more wins) with their media,
+   * waiting revokes, settings, collection membership, queued sends and aliases. Returns the
+   * cached files no longer needed.
+   */
+  moveChat(from: string, to: string, kind: ChatKind): string[] {
+    return this.transaction(() => {
+      this.messages.moveChat(from, to);
+      const files = this.media.moveChat(from, to);
+      this.pendingRevokes.moveChat(from, to);
+      this.chats.merge(from, to, kind);
+      this.collections.moveChat(from, to);
+      this.outbox.moveChat(from, to);
+      this.identity.repointAliases(from, to);
+      this.identity.setAlias(from, to);
+      return files;
+    });
+  }
+
+  /** Re-points everything a person did or is under jid `from` to their canonical jid `to`. */
+  renameUser(from: string, to: string): void {
+    this.transaction(() => {
+      this.messages.renameUser(from, to);
+      this.pendingRevokes.renameUser(from, to);
+      this.participants.renameUser(from, to);
+      this.contacts.merge(from, to);
+    });
+  }
+
   /**
    * Deletes disappearing messages past their expiry and revokes that waited too long for their
    * message; returns cached files to remove.
@@ -60,11 +107,7 @@ export class Store {
   purgeExpired(now: number = nowSeconds()): string[] {
     return this.transaction(() => {
       this.pendingRevokes.prune(now - PENDING_REVOKE_TTL);
-      return this.messages.expired(now).flatMap((key) => {
-        const file = this.media.remove(key);
-        this.messages.delete(key);
-        return file ? [file] : [];
-      });
+      return this.messages.expired(now).flatMap((key) => this.deleteMessage(key) ?? []);
     });
   }
 

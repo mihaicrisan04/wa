@@ -107,10 +107,7 @@ export class ChatsRepo {
     this.db.query("DELETE FROM chats WHERE jid = $jid").run({ jid });
   }
 
-  /**
-   * Folds chat `from` into `to`: the target keeps its own settings and inherits the ones it
-   * lacks, collection membership and queued sends move along, then `from` is dropped.
-   */
+  /** Folds chat `from` into `to`: the target keeps its settings and inherits the ones it lacks. */
   merge(from: string, to: string, kind: ChatKind): void {
     const source = this.get(from);
     if (source) {
@@ -141,15 +138,6 @@ export class ChatsRepo {
         });
       this.delete(from);
     }
-    this.db
-      .query(
-        `INSERT INTO collection_chats (collection, chat_jid)
-         SELECT collection, $to FROM collection_chats WHERE chat_jid = $from
-         ON CONFLICT DO NOTHING`,
-      )
-      .run({ from, to });
-    this.db.query("DELETE FROM collection_chats WHERE chat_jid = $from").run({ from });
-    this.db.query("UPDATE outbox SET chat_jid = $to WHERE chat_jid = $from").run({ from, to });
   }
 }
 

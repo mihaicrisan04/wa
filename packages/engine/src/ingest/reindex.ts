@@ -3,7 +3,7 @@ import type { MessageRow, Store } from "../store";
 import type { OwnIdentity } from "../whatsapp/connection";
 import { normalizeMessage, revokedMessage, type Normalized } from "../whatsapp/normalize";
 import { parseRaw } from "../whatsapp/raw";
-import { Identity } from "./lid";
+import { Identity } from "../whatsapp/identity";
 
 export interface ReindexResult {
   rewritten: number;

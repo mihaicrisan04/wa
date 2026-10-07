@@ -7,7 +7,7 @@ import type {
 import type { ParticipantRole } from "@wa/sdk";
 import type { Member } from "../store";
 import type { IngestContext } from "./context";
-import type { Batch } from "./lid";
+import type { Batch } from "./context";
 
 /** `groups.upsert` and `groups.update` (full metadata from `groupFetchAllParticipating`, or partial). */
 export function ingestGroup(ctx: IngestContext, group: Partial<GroupMetadata>): void {

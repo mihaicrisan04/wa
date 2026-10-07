@@ -93,6 +93,10 @@ export class OutboxRepo {
     this.db.query("UPDATE outbox SET status = 'queued' WHERE status = 'sending'").run();
   }
 
+  moveChat(from: string, to: string): void {
+    this.db.query("UPDATE outbox SET chat_jid = $to WHERE chat_jid = $from").run({ from, to });
+  }
+
   /** Marks waiting entries past their expiry as expired; returns their files to remove. */
   expire(now: number = nowSeconds()): string[] {
     return this.db

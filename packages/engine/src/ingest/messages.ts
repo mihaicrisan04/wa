@@ -86,19 +86,14 @@ export function ingestMessageUpdates(ctx: IngestContext, updates: WAMessageUpdat
 export function deleteMessages(ctx: IngestContext, data: BaileysEventMap["messages.delete"]): void {
   const { store, identity } = ctx;
   if ("all" in data) {
-    const jid = identity.chat(data.jid);
-    ctx.orphanedFiles.push(...store.media.removeChat(jid));
-    store.messages.deleteChat(jid);
+    ctx.orphan(...store.clearChat(identity.chat(data.jid)));
     return;
   }
   for (const key of data.keys) {
     if (!key.remoteJid || !key.id) continue;
     const id = key.id;
     isolated(ctx, { id }, () => {
-      const ref = { chatJid: chatOf(key, identity), id };
-      const file = store.media.remove(ref);
-      if (file) ctx.orphanedFiles.push(file);
-      store.messages.delete(ref);
+      ctx.orphan(store.deleteMessage({ chatJid: chatOf(key, identity), id }));
     });
   }
 }
@@ -163,10 +158,7 @@ function writeMessage(ctx: IngestContext, incoming: MessageRecord, pushName: str
 
   const ref = { chatJid: record.chatJid, id: record.id };
   if (record.media && record.deletedAt === null) store.media.upsert(ref, record.media);
-  else {
-    const file = store.media.remove(ref);
-    if (file) ctx.orphanedFiles.push(file);
-  }
+  else ctx.orphan(store.media.remove(ref));
   store.chats.touch(record.chatJid, record.ts);
 
   const sender = record.senderJid;

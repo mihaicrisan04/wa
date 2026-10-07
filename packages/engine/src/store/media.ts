@@ -71,10 +71,7 @@ export class MediaRepo {
       .flatMap((row) => (row.local_path ? [row.local_path] : []));
   }
 
-  /**
-   * Follows `MessagesRepo.moveChat` (run it first): on a clash the target's copy is kept, and
-   * media of messages the merge left revoked goes.
-   */
+  /** On a clash the target's copy is kept; media of messages the move left revoked goes. */
   moveChat(from: string, to: string): string[] {
     const clashes = this.db
       .query<{ local_path: string | null }, { from: string; to: string }>(
