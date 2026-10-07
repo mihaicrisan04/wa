@@ -1,6 +1,13 @@
 import { parseArgs } from "node:util";
-import { ConfigError, loadConfig, startEngine, type EngineConfig } from "@wa/engine";
-import { EXIT_USAGE, type Command } from "../command";
+import {
+  ConfigError,
+  EngineRunningError,
+  loadConfig,
+  startEngine,
+  type Engine,
+  type EngineConfig,
+} from "@wa/engine";
+import { EXIT_FAILURE, EXIT_USAGE, type Command } from "../command";
 
 export const serve: Command = {
   name: "serve",
@@ -26,7 +33,14 @@ export const serve: Command = {
       return EXIT_USAGE;
     }
 
-    const engine = await startEngine(config);
+    let engine: Engine;
+    try {
+      engine = await startEngine(config);
+    } catch (err) {
+      if (!(err instanceof EngineRunningError || isAddressInUse(err))) throw err;
+      io.err(`wa serve: ${err.message}`);
+      return EXIT_FAILURE;
+    }
     await waitForShutdownSignal();
     await engine.stop();
     return 0;
@@ -38,4 +52,8 @@ function waitForShutdownSignal(): Promise<void> {
     process.once("SIGINT", () => resolve());
     process.once("SIGTERM", () => resolve());
   });
+}
+
+function isAddressInUse(err: unknown): err is Error {
+  return err instanceof Error && (err as { code?: unknown }).code === "EADDRINUSE";
 }

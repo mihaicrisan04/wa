@@ -15,9 +15,10 @@ export async function dispatch(
     io.out(usage);
     return name ? 0 : 2;
   }
-  const run = subcommands[name];
-  if (!run) throw new UsageError(`unknown subcommand "${name}"\n\n${usage}`);
-  return run(rest, io);
+  if (!Object.hasOwn(subcommands, name)) {
+    throw new UsageError(`unknown subcommand "${name}"\n\n${usage}`);
+  }
+  return subcommands[name]!(rest, io);
 }
 
 /** Exactly `count` positionals, named for the error message. */

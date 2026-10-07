@@ -32,6 +32,8 @@ describe("argument checks happen before talking to the engine", () => {
   test.each([
     [["collections"], "usage:"],
     [["collections", "bogus"], 'unknown subcommand "bogus"'],
+    [["tokens", "constructor"], 'unknown subcommand "constructor"'],
+    [["profiles", "toString"], 'unknown subcommand "toString"'],
     [["collections", "create"], "expected <name>"],
     [["collections", "add", "master"], "expected <name> <chat...>"],
     [["profiles", "create", "p"], "--caps is required"],
@@ -79,6 +81,14 @@ describe("against a running engine", () => {
   afterAll(async () => {
     await engine.stop();
     await temp.cleanup();
+  });
+
+  test("a second serve on the same WA_HOME is a one-line error", async () => {
+    const result = await run(["serve"], env);
+    expect(result).toMatchObject({ code: 1 });
+    expect(result.err).toBe(
+      `wa serve: another wa engine is already running on ${engine.socketPath}`,
+    );
   });
 
   test("link shows the QR and waits for the link", async () => {
