@@ -2,8 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { Action, ActionPanel, Icon, open, showInFinder, showToast, Toast } from "@raycast/api";
 import type { Message } from "@wa/sdk";
-import { engineClient, enginePort } from "../lib/engine";
-import { describeError } from "../lib/errors";
+import { engineClient, failToast } from "../lib/engine";
 import {
   cachedMediaPath,
   extensionFor,
@@ -37,12 +36,17 @@ export function MediaActions({ message }: { message: Message }) {
   );
 }
 
-/** Downloaded fresh every time, so a message deleted or revoked since isn't served from disk. */
-async function openMedia(message: Message): Promise<string> {
-  await pruneStaleFiles(MEDIA_DIR, MEDIA_TTL_MS);
+async function downloadWithExtension(message: Message) {
   const client = await engineClient();
   const download = await client.downloadMedia(message.chat, message.id);
   const extension = extensionFor(download.fileName ?? message.fileName, download.mimetype);
+  return { download, extension };
+}
+
+/** Downloaded fresh every time, so a message deleted or revoked since isn't served from disk. */
+async function openMedia(message: Message): Promise<string> {
+  await pruneStaleFiles(MEDIA_DIR, MEDIA_TTL_MS);
+  const { download, extension } = await downloadWithExtension(message);
   const path = cachedMediaPath(MEDIA_DIR, message.chat, message.id, extension);
   await saveDownload(download, path);
   await open(path);
@@ -50,9 +54,7 @@ async function openMedia(message: Message): Promise<string> {
 }
 
 async function saveMedia(message: Message): Promise<string> {
-  const client = await engineClient();
-  const download = await client.downloadMedia(message.chat, message.id);
-  const extension = extensionFor(download.fileName ?? message.fileName, download.mimetype);
+  const { download, extension } = await downloadWithExtension(message);
   const fallback = `whatsapp-${message.type}-${message.ts}${extension}`;
   let name = safeFileName(download.fileName ?? message.fileName, fallback);
   if (!name.toLowerCase().endsWith(extension)) name += extension;
@@ -68,9 +70,6 @@ async function withToast(title: string, run: () => Promise<string>): Promise<voi
     toast.title = await run();
     toast.style = Toast.Style.Success;
   } catch (error) {
-    const description = describeError(error, enginePort());
-    toast.style = Toast.Style.Failure;
-    toast.title = description.title;
-    toast.message = description.message;
+    failToast(toast, error);
   }
 }

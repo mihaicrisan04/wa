@@ -1,4 +1,4 @@
-import { WaApiError } from "@wa/sdk";
+import { START_ENGINE, WaApiError } from "@wa/sdk";
 import { MissingTokenError } from "./settings";
 
 export interface ErrorDescription {
@@ -6,14 +6,14 @@ export interface ErrorDescription {
   message: string;
 }
 
-const START_ENGINE = "Start it with `wa service install` (or `wa serve` in a terminal).";
+const START_IT = `Start it with ${START_ENGINE}.`;
 
 /** What went wrong, phrased for a toast or an empty view. */
 export function describeError(error: unknown, port: number): ErrorDescription {
   if (error instanceof MissingTokenError) {
     return {
       title: "No wa token",
-      message: `The engine writes one when it starts. ${START_ENGINE} Or set the Token preference.`,
+      message: `The engine writes one when it starts. ${START_IT} Or set the Token preference.`,
     };
   }
   if (error instanceof WaApiError) return describeApiError(error);
@@ -23,7 +23,7 @@ export function describeError(error: unknown, port: number): ErrorDescription {
   if (isConnectionRefused(error)) {
     return {
       title: "wa engine isn't running",
-      message: `Nothing answers on 127.0.0.1:${port}. ${START_ENGINE}`,
+      message: `Nothing answers on 127.0.0.1:${port}. ${START_IT}`,
     };
   }
   if (isFetchFailure(error)) {

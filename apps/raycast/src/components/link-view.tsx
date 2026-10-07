@@ -1,11 +1,11 @@
 import { Action, ActionPanel, Detail, Icon } from "@raycast/api";
-import { WaApiError, type Qr, type WaClient } from "@wa/sdk";
+import { isFinal, linkStep, WaApiError, type LinkStep, type Qr, type WaClient } from "@wa/sdk";
 import QRCode from "qrcode";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { engineClient, enginePort } from "../lib/engine";
-import { describeError, type ErrorDescription } from "../lib/errors";
-import { isFinal, linkMarkdown, linkStep, type LinkStep } from "../lib/link-flow";
-import { escapeMarkdown } from "../lib/markdown";
+import { describeEngineError, engineClient } from "../lib/engine";
+import type { ErrorDescription } from "../lib/errors";
+import { linkMarkdown } from "../lib/link-flow";
+import { errorMarkdown } from "../lib/markdown";
 
 const POLL_MS = 2_000;
 
@@ -55,7 +55,7 @@ export function LinkView() {
       setView(next);
       return step;
     } catch (error) {
-      setFailure(describeError(error, enginePort()));
+      setFailure(describeEngineError(error));
       return null;
     }
   }, []);
@@ -80,11 +80,7 @@ export function LinkView() {
     setRound((value) => value + 1);
   };
 
-  const markdown = failure
-    ? `# ${escapeMarkdown(failure.title)}\n\n${escapeMarkdown(failure.message)}`
-    : view
-      ? linkMarkdown(view.step, view)
-      : "";
+  const markdown = failure ? errorMarkdown(failure) : view ? linkMarkdown(view.step, view) : "";
 
   return (
     <Detail

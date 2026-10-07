@@ -1,9 +1,9 @@
 import { Action, ActionPanel, Icon, List, showToast, Toast } from "@raycast/api";
-import { enginePort } from "../lib/engine";
-import { describeError, type ErrorDescription } from "../lib/errors";
+import { describeEngineError } from "../lib/engine";
+import type { ErrorDescription } from "../lib/errors";
 
 export function showErrorToast(error: unknown): void {
-  const { title, message } = describeError(error, enginePort());
+  const { title, message } = describeEngineError(error);
   void showToast({ style: Toast.Style.Failure, title, message });
 }
 

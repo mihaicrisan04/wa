@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { SNIPPET_CLOSE, SNIPPET_OPEN } from "@wa/sdk";
-import { chatTitle, phoneOf, senderLabel } from "../src/lib/labels";
+import { phoneOf, SNIPPET_CLOSE, SNIPPET_OPEN } from "@wa/sdk";
+import { chatTitle, senderLabel } from "../src/lib/labels";
 import {
   contextMarkdown,
   escapeMarkdown,

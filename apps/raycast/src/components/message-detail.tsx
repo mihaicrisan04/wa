@@ -1,10 +1,9 @@
 import { Detail } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
 import type { Message } from "@wa/sdk";
-import { engineClient, enginePort } from "../lib/engine";
-import { describeError } from "../lib/errors";
+import { describeEngineError, engineClient } from "../lib/engine";
 import { senderLabel } from "../lib/labels";
-import { contextMarkdown, escapeMarkdown, formatTime } from "../lib/markdown";
+import { contextMarkdown, errorMarkdown, formatTime } from "../lib/markdown";
 import { showErrorToast } from "./error-view";
 import { MessageActions } from "./message-actions";
 
@@ -23,10 +22,7 @@ export function MessageDetail({ message, chatName }: { message: Message; chatNam
 
   let markdown = "";
   if (data) markdown = contextMarkdown(data, chatName);
-  else if (error) {
-    const { title, message: why } = describeError(error, enginePort());
-    markdown = `# ${escapeMarkdown(title)}\n\n${escapeMarkdown(why)}`;
-  }
+  else if (error) markdown = errorMarkdown(describeEngineError(error));
   const shown = data?.message ?? message;
 
   return (

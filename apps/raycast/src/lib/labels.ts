@@ -1,9 +1,8 @@
-import type { ChatKind, ConnectionState, Message } from "@wa/sdk";
+import { phoneOf, type ChatKind, type ConnectionState, type Message } from "@wa/sdk";
 
-/** `+40712345678` for a phone-number jid (device suffix dropped), null for groups, LIDs, etc. */
-export function phoneOf(jid: string | null): string | null {
-  const match = jid ? /^(\d+)(?::\d+)?@s\.whatsapp\.net$/.exec(jid) : null;
-  return match ? `+${match[1]}` : null;
+/** The linked account: its phone number, else its jid. */
+export function accountLabel(jid: string): string {
+  return phoneOf(jid) ?? jid;
 }
 
 export function chatTitle(chat: { jid: string; name: string | null; kind?: ChatKind }): string {

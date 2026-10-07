@@ -1,4 +1,5 @@
 import { SNIPPET_CLOSE, SNIPPET_OPEN, type Message, type MessageContext } from "@wa/sdk";
+import type { ErrorDescription } from "./errors";
 import { senderLabel } from "./labels";
 
 const INVISIBLE =
@@ -19,6 +20,10 @@ export function escapeMarkdown(text: string): string {
     .replace(/[\\`*_{}[\]()#+\-.!|<>~=]/g, "\\$&")
     .replace(/\r\n?/g, "\n")
     .replace(/\n/g, "  \n");
+}
+
+export function errorMarkdown({ title, message }: ErrorDescription): string {
+  return `# ${escapeMarkdown(title)}\n\n${escapeMarkdown(message)}`;
 }
 
 /** Plain one-line text of a search snippet, for list titles. */

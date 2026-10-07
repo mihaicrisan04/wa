@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { ConnectionState, HistorySync, Status } from "@wa/sdk";
-import { isFinal, linkMarkdown, linkStep } from "../src/lib/link-flow";
-import { historyLabel, needsLink, statusMarkdown, statusRows } from "../src/lib/status-view";
+import { isFinal, linkStep, type ConnectionState, type HistorySync, type Status } from "@wa/sdk";
+import { linkMarkdown } from "../src/lib/link-flow";
+import { statusMarkdown, statusRows } from "../src/lib/status-view";
 import { PEER } from "./support";
 
 describe("link flow", () => {
@@ -56,22 +56,18 @@ function status(overrides: Partial<Status> = {}): Status {
 }
 
 describe("status view", () => {
-  test("history sync progress", () => {
-    const sync = (patch: Partial<HistorySync>): HistorySync => ({
-      progress: null,
-      status: null,
-      updatedAt: null,
-      phases: [],
-      ...patch,
-    });
-    expect(historyLabel(sync({}))).toBe("Not started");
-    expect(historyLabel(sync({ progress: 42.4, updatedAt: 1 }))).toBe("Syncing, 42%");
+  test("history sync progress is the sdk summary, capitalised", () => {
+    const syncRow = (patch: Partial<HistorySync>) => {
+      const history = { progress: null, status: null, updatedAt: null, phases: [], ...patch };
+      return statusRows(status({ history }), 7373).find((row) => row.title === "History Sync")
+        ?.text;
+    };
+    expect(syncRow({})).toBe("Not started");
+    expect(syncRow({ progress: 42.4, updatedAt: 1 })).toBe("In progress (42%)");
     const bootstrap = { syncType: "initial_bootstrap", progress: null, chunks: 1, updatedAt: 1 };
-    expect(historyLabel(sync({ phases: [{ ...bootstrap, status: "complete" }] }))).toBe("Syncing");
-    expect(historyLabel(sync({ progress: 80, status: "paused", updatedAt: 1 }))).toBe(
-      "Paused at 80%",
-    );
-    expect(historyLabel(sync({ progress: 80, status: "complete", updatedAt: 1 }))).toBe("Complete");
+    expect(syncRow({ phases: [{ ...bootstrap, status: "complete" }] })).toBe("In progress");
+    expect(syncRow({ progress: 80, status: "paused", updatedAt: 1 })).toBe("Paused at 80%");
+    expect(syncRow({ progress: 80, status: "complete", updatedAt: 1 })).toBe("Complete");
   });
 
   test("rows cover connection, identity, sync, counts, outbox and engine", () => {
@@ -84,7 +80,7 @@ describe("status view", () => {
     expect(rows).toMatchObject({
       WhatsApp: "Connected",
       "Linked As": "+40700000002",
-      "History Sync": "Syncing, 42%",
+      "History Sync": "In progress (42%)",
       Chats: "12",
       Messages: "34,567",
       Outbox: "2 waiting",
@@ -95,13 +91,10 @@ describe("status view", () => {
   });
 
   test("an unlinked engine points at Link WhatsApp", () => {
-    const unlinked = status({ state: "not_linked", me: null });
-    expect(needsLink(unlinked)).toBe(true);
-    expect(needsLink(status({ state: "needs_link", needsLink: true }))).toBe(true);
-    expect(needsLink(status())).toBe(false);
+    const unlinked = status({ state: "not_linked", needsLink: true, me: null });
     expect(statusMarkdown(unlinked)).toContain("Link WhatsApp");
     expect(statusMarkdown(status())).toBe(
-      "# Connected\n\nLinked as \\+40700000002. History sync: syncing, 42%.",
+      "# Connected\n\nLinked as \\+40700000002. History sync: in progress (42%).",
     );
   });
 });

@@ -33,7 +33,3 @@ export function parsePort(value: string | undefined): number {
   const port = Number(value?.trim());
   return Number.isInteger(port) && port > 0 && port <= 65_535 ? port : DEFAULT_PORT;
 }
-
-export function engineUrl(port: number): string {
-  return `http://127.0.0.1:${port}`;
-}
