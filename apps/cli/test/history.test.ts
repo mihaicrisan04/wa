@@ -70,15 +70,16 @@ async function printed(lines: () => string, text: string) {
 }
 
 describe("wa link", () => {
-  test("follows the history sync until WhatsApp says it is done", async () => {
+  test("follows the history sync until the full sync is done", async () => {
     const out: string[] = [];
+    let finished = false;
     const linking = runCli(["link"], {
       out: (line) => out.push(line),
       err: (line) => out.push(line),
       env,
       pollMs: 5,
       historyIdleMs: 5_000,
-    });
+    }).finally(() => (finished = true));
     await scanQr();
     await printed(() => out.join("\n"), "history: waiting for the phone");
 
@@ -104,6 +105,12 @@ describe("wa link", () => {
         explicit: true,
       },
     });
+    // the full sync comes after recent
+    await Bun.sleep(30);
+    expect(finished).toBe(false);
+    await emit({
+      "messaging-history.set": historySet({ syncType: HistorySyncType.FULL, progress: 100 }),
+    });
 
     expect(await linking).toBe(0);
     const text = out.join("\n");
@@ -112,7 +119,9 @@ describe("wa link", () => {
 
     const status = await run(["status"]);
     expect(status.out).toMatch(/history\s+complete/);
-    expect(status.out).toMatch(/sync phases\s+initial_bootstrap complete · recent complete/);
+    expect(status.out).toMatch(
+      /sync phases\s+initial_bootstrap complete · recent complete · full 100%/,
+    );
   });
 
   test("stops watching when the sync goes quiet, and when the connection drops", async () => {

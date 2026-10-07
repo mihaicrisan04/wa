@@ -207,13 +207,13 @@ describe("messaging-history.set", () => {
     });
     expect(readHistorySync(h.store).status).toBe("paused");
 
-    // Baileys never reports RECENT complete after its own pause; reaching 100% has to say it
     await h.emit(recent(70));
     expect(readHistorySync(h.store)).toMatchObject({ progress: 70, status: null });
+    // the full sync still has to come after recent
     await h.emit(recent(100));
     expect(readHistorySync(h.store)).toMatchObject({
       progress: 100,
-      status: "complete",
+      status: null,
       phases: [{ syncType: "recent", progress: 100, status: null, chunks: 3 }],
     });
   });
