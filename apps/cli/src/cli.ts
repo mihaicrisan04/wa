@@ -1,9 +1,10 @@
 import { ENGINE_VERSION } from "@wa/engine";
 import { EXIT_USAGE, type Command, type CommandIO } from "./command";
+import { reindex } from "./commands/reindex";
 import { selftest } from "./commands/selftest";
 import { serve } from "./commands/serve";
 
-export const COMMANDS: Command[] = [serve, selftest];
+export const COMMANDS: Command[] = [serve, reindex, selftest];
 
 export function helpText(): string {
   const visible = COMMANDS.filter((command) => !command.hidden);

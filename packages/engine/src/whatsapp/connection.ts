@@ -1,9 +1,10 @@
-import { rename } from "node:fs/promises";
+import { rename, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   DisconnectReason,
   jidNormalizedUser,
   useMultiFileAuthState,
+  type AuthenticationCreds,
   type AuthenticationState,
   type BaileysEventMap,
 } from "@whiskeysockets/baileys";
@@ -108,9 +109,7 @@ export class WhatsAppConnection {
 
   /** Read from the persisted credentials, so it is known while disconnected too. */
   me(): OwnIdentity | null {
-    const me = this.auth?.state.creds.me;
-    if (!me?.id) return null;
-    return { pn: jidNormalizedUser(me.id), lid: me.lid ? jidNormalizedUser(me.lid) : null };
+    return ownIdentityOf(this.auth?.state.creds);
   }
 
   isLinked(): boolean {
@@ -265,6 +264,20 @@ export class WhatsAppConnection {
     });
     await this.loadAuth();
   }
+}
+
+/** Own identity from the credentials on disk, without connecting; null when never linked. */
+export async function readOwnIdentity(home: string): Promise<OwnIdentity | null> {
+  const authDir = join(home, "auth");
+  if (!(await stat(authDir).catch(() => null))?.isDirectory()) return null;
+  const { state } = await useMultiFileAuthState(authDir);
+  return ownIdentityOf(state.creds);
+}
+
+function ownIdentityOf(creds: AuthenticationCreds | undefined): OwnIdentity | null {
+  const me = creds?.me;
+  if (!me?.id) return null;
+  return { pn: jidNormalizedUser(me.id), lid: me.lid ? jidNormalizedUser(me.lid) : null };
 }
 
 async function endClient(client: WhatsAppClient): Promise<void> {
