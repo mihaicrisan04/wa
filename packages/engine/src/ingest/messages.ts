@@ -20,8 +20,10 @@ import { isolated, type IngestContext } from "./context";
 /** Edits and revokes a batch announced through carrier messages. */
 export interface Carriers {
   actions: MessageAction[];
-  /** Revokes by their carrier, keyed like `refKey`. */
+  /** Revokes by their carrier's id, keyed like `refKey`. */
   revokes: Map<string, MessageAction>;
+  /** Edits by their target's id, keyed like `refKey`. */
+  edits: Map<string, MessageAction>;
 }
 
 export function normalizeMessages(
@@ -47,14 +49,17 @@ export function carriersOf(...lists: Normalized[][]): Carriers {
   const actions = lists.flatMap((items) =>
     items.flatMap((item) => (item.kind === "carrier" && item.action ? [item.action] : [])),
   );
-  const revokes = new Map(
-    actions.flatMap((action) =>
-      action.type === "revoke" && action.carrierId
-        ? [[refKey(action.chatJid, action.carrierId), action] as const]
-        : [],
-    ),
-  );
-  return { actions, revokes };
+  const revokes = new Map<string, MessageAction>();
+  const edits = new Map<string, MessageAction>();
+  for (const action of actions) {
+    if (action.type === "revoke" && action.carrierId) {
+      revokes.set(refKey(action.chatJid, action.carrierId), action);
+    } else if (action.type === "edit") {
+      const key = refKey(action.chatJid, action.targetId);
+      if (!edits.has(key)) edits.set(key, action);
+    }
+  }
+  return { actions, revokes, edits };
 }
 
 /** Stores the storable messages; carriers are never stored as rows. */
@@ -138,10 +143,7 @@ function checkFoldedEdit(
   record: MessageRecord,
   carriers: Carriers,
 ): MessageRecord {
-  const carrier = carriers.actions.find(
-    (action) =>
-      action.type === "edit" && action.chatJid === record.chatJid && action.targetId === record.id,
-  );
+  const carrier = carriers.edits.get(refKey(record.chatJid, record.id));
   if (!carrier || isAuthorized(ctx, carrier, record)) return record;
   ctx.logger.warn(
     { chat: record.chatJid, id: record.id },
