@@ -27,11 +27,12 @@
 git clone https://github.com/mihaicrisan04/whatsapp-bookmark.git
 cd whatsapp-bookmark
 mise install && mise run install
-mise daemon:build
-mise daemon:auth     # scan QR with WhatsApp, Settings > Linked Devices
-mise daemon:enable   # auto-start on login
-mise dev
+mise run check        # lint, typecheck, tests, builds dist/wa and the Raycast extension
+mise run dev:engine   # engine from source on a dev data dir, port 7374
+mise run dev:raycast  # Raycast dev mode
 ```
+
+> the repo is mid-migration to the `wa` engine: the legacy daemon and its `mise daemon:*` tasks are gone, and the Raycast extension still expects a daemon on port 7272 until it moves to the engine. full setup docs come with the README rewrite.
 
 then set your phone number (with country code, no `+`) in Raycast preferences.
 
