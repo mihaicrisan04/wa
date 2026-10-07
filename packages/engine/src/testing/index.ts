@@ -6,6 +6,7 @@ export {
   type SentMessage,
 } from "./fake-client";
 export {
+  buildChat,
   buildMessage,
   content,
   fixtureId,

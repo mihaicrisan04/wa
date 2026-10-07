@@ -119,6 +119,13 @@ export class FakeWhatsAppClient implements WhatsAppClient {
     this.ev.flush();
   }
 
+  /** Emits whatever `work` emits as one buffered batch, so Baileys folds updates into upserts. */
+  buffered(work: () => void): void {
+    this.ev.buffer();
+    work();
+    this.ev.flush();
+  }
+
   /** Simulates a successful (re)connect for an already linked account. */
   open(identity: FakeIdentity | undefined = this.user as FakeIdentity | undefined): void {
     if (identity) {

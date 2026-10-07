@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import {
   proto,
   type BaileysEventMap,
+  type Chat,
   type WAMessage,
   type WAMessageKey,
 } from "@whiskeysockets/baileys";
@@ -56,6 +57,12 @@ export function buildMessage(fixture: MessageFixture): WAMessage {
   if (fixture.participantAlt) key.participantAlt = fixture.participantAlt;
   if (fixture.addressingMode) key.addressingMode = fixture.addressingMode;
   return Object.assign(decoded, { key });
+}
+
+/** A history conversation, decoded the way Baileys hands it over (only sent fields are own). */
+export function buildChat(conversation: proto.IConversation & { id: string }): Chat {
+  const encoded = proto.Conversation.encode(proto.Conversation.fromObject(conversation)).finish();
+  return proto.Conversation.decode(encoded);
 }
 
 export function keyOf(message: WAMessage): WAMessageKey {
@@ -117,12 +124,12 @@ export const content = {
 
   ephemeral: (inner: proto.IMessage): proto.IMessage => ({ ephemeralMessage: { message: inner } }),
 
-  edit: (target: WAMessageKey, text: string): proto.IMessage => ({
+  edit: (target: WAMessageKey, text: string, timestampMs = Date.now()): proto.IMessage => ({
     protocolMessage: {
       key: target,
       type: proto.Message.ProtocolMessage.Type.MESSAGE_EDIT,
       editedMessage: { conversation: text },
-      timestampMs: Date.now(),
+      timestampMs,
     },
   }),
 
