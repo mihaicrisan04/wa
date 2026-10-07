@@ -49,7 +49,13 @@ const CHECKS: Check[] = [
 
 async function outgoingImage(): Promise<void> {
   const png = await new Jimp({ width: 64, height: 48, color: 0x3366ffff }).getBuffer(JimpMime.png);
-  const outgoing = await buildOutgoingContent({ file: { bytes: png, name: "selftest.png" } });
+  const outgoing = await buildOutgoingContent({
+    kind: "file",
+    bytes: png,
+    fileName: "selftest.png",
+    mimetype: null,
+    caption: null,
+  });
   if (!("image" in outgoing)) throw new Error("PNG was not turned into an image message");
 
   const prepared = await prepareWAMessageMedia(outgoing, {

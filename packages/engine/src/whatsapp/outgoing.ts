@@ -2,13 +2,16 @@ import { extname } from "node:path";
 import type { AnyMessageContent } from "@whiskeysockets/baileys";
 import { Jimp, JimpMime } from "jimp";
 
-export interface OutgoingFile {
-  bytes: Uint8Array;
-  name: string;
-  mimetype?: string;
-}
+/** What a client asks to send; a file's bytes travel apart (the outbox keeps them on disk). */
+export type OutgoingContent =
+  | { kind: "text"; text: string }
+  | { kind: "file"; fileName: string; mimetype: string | null; caption: string | null };
 
-export type OutgoingPayload = { text: string } | { file: OutgoingFile; caption?: string };
+type OutgoingFile = Extract<OutgoingContent, { kind: "file" }>;
+
+export type OutgoingMessage =
+  | Extract<OutgoingContent, { kind: "text" }>
+  | (OutgoingFile & { bytes: Uint8Array });
 
 const MAX_IMAGE_DIMENSION = 4096;
 const THUMBNAIL_WIDTH = 100;
@@ -40,41 +43,43 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   ".txt": "text/plain",
 };
 
-const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp"]);
-const VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".avi", ".mkv", ".webm", ".3gp"]);
-const AUDIO_EXTENSIONS = new Set([".mp3", ".ogg", ".m4a", ".wav", ".aac", ".opus"]);
+type OutgoingKind = "image" | "video" | "audio" | "document";
 
-export type OutgoingKind = "image" | "video" | "audio" | "document";
+const KIND_BY_MIME_TYPE: Record<string, OutgoingKind> = {
+  image: "image",
+  video: "video",
+  audio: "audio",
+};
 
 export function classifyFile(name: string): OutgoingKind {
-  const extension = extname(name).toLowerCase();
-  if (IMAGE_EXTENSIONS.has(extension)) return "image";
-  if (VIDEO_EXTENSIONS.has(extension)) return "video";
-  if (AUDIO_EXTENSIONS.has(extension)) return "audio";
-  return "document";
+  const mimeType = MIME_BY_EXTENSION[extname(name).toLowerCase()]?.split("/")[0] ?? "";
+  return KIND_BY_MIME_TYPE[mimeType] ?? "document";
 }
 
-export function mimetypeFor(file: OutgoingFile, fallback: string): string {
-  return file.mimetype || MIME_BY_EXTENSION[extname(file.name).toLowerCase()] || fallback;
+export function mimetypeFor(
+  file: Pick<OutgoingFile, "fileName" | "mimetype">,
+  fallback: string,
+): string {
+  return file.mimetype || MIME_BY_EXTENSION[extname(file.fileName).toLowerCase()] || fallback;
 }
 
-export async function buildOutgoingContent(payload: OutgoingPayload): Promise<AnyMessageContent> {
-  if ("text" in payload) return { text: payload.text };
+export async function buildOutgoingContent(message: OutgoingMessage): Promise<AnyMessageContent> {
+  if (message.kind === "text") return { text: message.text };
 
-  const { file, caption } = payload;
-  const bytes = Buffer.from(file.bytes);
-  switch (classifyFile(file.name)) {
+  const bytes = Buffer.from(message.bytes);
+  const caption = message.caption ?? undefined;
+  switch (classifyFile(message.fileName)) {
     case "image":
       return { ...(await prepareImage(bytes)), caption };
     case "video":
-      return { video: bytes, mimetype: mimetypeFor(file, "video/mp4"), caption };
+      return { video: bytes, mimetype: mimetypeFor(message, "video/mp4"), caption };
     case "audio":
-      return { audio: bytes, mimetype: mimetypeFor(file, "audio/mpeg") };
+      return { audio: bytes, mimetype: mimetypeFor(message, "audio/mpeg") };
     case "document":
       return {
         document: bytes,
-        mimetype: mimetypeFor(file, "application/octet-stream"),
-        fileName: file.name,
+        mimetype: mimetypeFor(message, "application/octet-stream"),
+        fileName: message.fileName,
         caption,
       };
   }

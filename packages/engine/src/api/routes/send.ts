@@ -3,10 +3,10 @@ import { MAX_UPLOAD_BYTES, type OutboxEntry, type Recipient, type SendResult } f
 import { Hono } from "hono";
 import { z } from "zod";
 import { invalid, notFound, tooLarge } from "../../errors";
-import type { OutgoingMessage } from "../../outbox";
 import { actorOf, assertCan, type Principal } from "../../policy";
 import { inScope, listRecipients, sendTarget, type ReadContext } from "../../queries";
-import type { OutboxPayload, OutboxRow } from "../../store";
+import type { OutboxRow } from "../../store";
+import type { OutgoingMessage } from "../../whatsapp/outgoing";
 import { readContext, type ApiDeps, type AppContext, type AppEnv } from "../context";
 import { jsonBody, limitParam, optionalText, requiredText } from "../params";
 
@@ -94,8 +94,7 @@ function safeFileName(name: string): string {
 /** An entry is visible to the profile that queued it, while its chat is still in scope. */
 function mayRead(ctx: ReadContext, principal: Principal, row: OutboxRow): boolean {
   if (principal.kind === "admin") return true;
-  const payload = JSON.parse(row.payload) as OutboxPayload;
-  if (payload.profile !== principal.profile) return false;
+  if (row.profile !== principal.profile) return false;
   return row.chat_jid === ctx.identity.me() || inScope(ctx, row.chat_jid);
 }
 

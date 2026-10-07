@@ -84,7 +84,10 @@ describe("FakeWhatsAppClient.sendMessage", () => {
       JimpMime.png,
     );
     const outgoing = await buildOutgoingContent({
-      file: { bytes: png, name: "a.png" },
+      kind: "file",
+      bytes: png,
+      fileName: "a.png",
+      mimetype: null,
       caption: "pic",
     });
 

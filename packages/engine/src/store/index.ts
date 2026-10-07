@@ -84,7 +84,7 @@ export function openStore(path: string): Store {
 
 export type { CollectionRow, ProfileRecord, ProfileSpec, TokenRow } from "./access";
 export type { AuditRecord, AuditRow } from "./audit";
-export type { NewOutboxEntry, OutboxPayload, OutboxRow } from "./outbox";
+export type { OutboxRow } from "./outbox";
 export type { ChatKind, ChatPatch, ChatRow } from "./chats";
 export type { ContactPatch, ContactRow } from "./contacts";
 export type { MediaRow } from "./media";
