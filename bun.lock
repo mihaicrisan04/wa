@@ -60,7 +60,6 @@
       "name": "@wa/sdk",
       "version": "0.1.0",
       "devDependencies": {
-        "@types/bun": "1.4.2",
         "typescript": "~5.9.3",
       },
     },
