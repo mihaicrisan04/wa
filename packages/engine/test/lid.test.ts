@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { proto } from "@whiskeysockets/baileys";
-import { buildMessage, content, keyOf } from "../src/testing";
+import { buildMessage, content, historySet, keyOf } from "../src/testing";
 import {
   ANA_LID,
   ANA_PN,
@@ -242,5 +242,81 @@ describe("quotes", () => {
       )
       .get();
     expect(row).toEqual({ quoted_chat_jid: GROUP, quoted_participant: ANA_PN });
+  });
+});
+
+describe("a person's role across their jids", () => {
+  const roleChange = (jid: string, action: "promote" | "demote" | "remove") =>
+    h.emit({
+      "group-participants.update": {
+        id: GROUP,
+        author: ANA_PN,
+        participants: [{ id: jid }],
+        action,
+      },
+    });
+  const learnBob = () => h.emit({ "lid-mapping.update": { lid: BOB_LID, pn: BOB_PN } });
+  const bobRole = () => h.store.participants.role(GROUP, BOB_PN);
+
+  beforeEach(async () => {
+    await h.emit({
+      "groups.upsert": [
+        {
+          id: GROUP,
+          subject: "PP",
+          owner: undefined,
+          participants: [
+            { id: ANA_PN, admin: null },
+            { id: BOB_PN, admin: "admin" },
+          ],
+        },
+      ],
+    });
+  });
+
+  test("a demotion seen under the LID outlives the admin role under the PN", async () => {
+    await roleChange(BOB_LID, "demote");
+    await learnBob();
+    expect(bobRole()).toBe("member");
+
+    const message = buildMessage({
+      chat: GROUP,
+      id: "3EB0ANA",
+      participant: ANA_PN,
+      message: content.text("mine"),
+    });
+    await upsert(message);
+    await h.emit({
+      "messages.update": [
+        {
+          key: { ...keyOf(message), participant: BOB_PN },
+          update: { message: null, messageStubType: proto.WebMessageInfo.StubType.REVOKE },
+        },
+      ],
+    });
+    expect(h.store.messages.get(GROUP, "3EB0ANA")).toMatchObject({ type: "text", text: "mine" });
+  });
+
+  test("a removal seen under the LID outlives the admin role under the PN", async () => {
+    await roleChange(BOB_LID, "remove");
+    await learnBob();
+    expect(bobRole()).toBe("left");
+  });
+
+  test("a role under the PN newer than the one under the LID is kept", async () => {
+    await roleChange(BOB_LID, "demote");
+    await roleChange(BOB_PN, "promote");
+    await learnBob();
+    expect(bobRole()).toBe("admin");
+  });
+
+  test("having left long ago never demotes a current member", async () => {
+    await h.emit({
+      "messaging-history.set": historySet({
+        pastParticipants: [{ groupJid: GROUP, pastParticipants: [{ userJid: BOB_LID }] }],
+      }),
+    });
+    await learnBob();
+    expect(bobRole()).toBe("admin");
   });
 });
