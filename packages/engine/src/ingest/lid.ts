@@ -60,8 +60,8 @@ export class Identity implements JidResolver {
     const { lid, pn } = pair;
     const { identity, media, messages, chats, participants, contacts } = this.store;
     if (!identity.setMapping(lid, pn)) return [];
-    const orphanedFiles = media.moveChat(lid, pn);
     messages.moveChat(lid, pn);
+    const orphanedFiles = media.moveChat(lid, pn);
     chats.merge(lid, pn, this.kindOf(pn));
     identity.repointAliases(lid, pn);
     identity.setAlias(lid, pn);

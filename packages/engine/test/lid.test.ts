@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { buildMessage, content } from "../src/testing";
+import { proto } from "@whiskeysockets/baileys";
+import { buildMessage, content, keyOf } from "../src/testing";
 import {
   ANA_LID,
   ANA_PN,
@@ -182,6 +183,47 @@ describe("a mapping learned later", () => {
     expect(h.store.chats.get(BOB_LID)).toBeNull();
     expect(members()).toEqual([BOB_PN]);
     expect(h.store.contacts.get(BOB_PN)).toMatchObject({ name: "Bob B.", lid: BOB_LID });
+  });
+});
+
+describe("merging copies of the same message", () => {
+  const merge = () => h.emit({ "lid-mapping.update": { lid: ANA_LID, pn: ANA_PN } });
+
+  test("a revoke tombstone under the LID wins over content under the PN", async () => {
+    await upsert(
+      buildMessage({ chat: ANA_PN, id: "3EB0X", message: content.image({ caption: "secret" }) }),
+      buildMessage({
+        chat: ANA_LID,
+        id: "3EB0X",
+        message: null,
+        stubType: proto.WebMessageInfo.StubType.REVOKE,
+      }),
+    );
+    expect(h.store.media.get({ chatJid: ANA_PN, id: "3EB0X" })).not.toBeNull();
+    await merge();
+
+    expect(messageRows(h.store, ANA_PN)).toEqual([
+      expect.objectContaining({ id: "3EB0X", type: "revoked", caption: null }),
+    ]);
+    expect(h.store.media.get({ chatJid: ANA_PN, id: "3EB0X" })).toBeNull();
+    expect(h.store.search("secret")).toEqual([]);
+  });
+
+  test("an edited copy under the LID wins over an older one under the PN", async () => {
+    const original = buildMessage({ chat: ANA_LID, id: "3EB0E", message: content.text("v1") });
+    await upsert(original);
+    await upsert(
+      buildMessage({
+        chat: ANA_LID,
+        message: content.edit(keyOf(original), "v2", 1_700_000_050_000),
+      }),
+    );
+    await upsert(buildMessage({ chat: ANA_PN, id: "3EB0E", message: content.text("v1") }));
+    await merge();
+
+    expect(messageRows(h.store, ANA_PN)).toEqual([
+      expect.objectContaining({ id: "3EB0E", text: "v2", edited_at: 1_700_000_050 }),
+    ]);
   });
 });
 

@@ -235,17 +235,21 @@ export class MessagesRepo {
   }
 
   /**
-   * Moves a chat's messages to another jid. When both hold the same message id, the copy
-   * with content wins over a placeholder, otherwise the target's copy is kept.
+   * Moves a chat's messages to another jid. When both hold the same message id, the copy that
+   * knows more wins: a tombstone over content, content over a placeholder, then the later edit;
+   * on a tie the target's copy is kept.
    */
   moveChat(from: string, to: string): void {
+    const rank = (row: string) =>
+      `(CASE WHEN ${row}.deleted_at IS NOT NULL THEN 2 WHEN ${row}.type = '${PLACEHOLDER_TYPE}' THEN 0 ELSE 1 END,
+        coalesce(${row}.edited_at, 0))`;
     this.db
       .query(
         `DELETE FROM messages AS target
-         WHERE target.chat_jid = $to AND target.type = '${PLACEHOLDER_TYPE}' AND EXISTS (
+         WHERE target.chat_jid = $to AND EXISTS (
            SELECT 1 FROM messages AS source
            WHERE source.chat_jid = $from AND source.id = target.id
-             AND source.type != '${PLACEHOLDER_TYPE}'
+             AND ${rank("source")} > ${rank("target")}
          )`,
       )
       .run({ from, to });

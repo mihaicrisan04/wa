@@ -64,7 +64,10 @@ export class MediaRepo {
       .flatMap((row) => (row.local_path ? [row.local_path] : []));
   }
 
-  /** Moves a chat's media to another jid; on a clash the target's copy is kept. */
+  /**
+   * Follows `MessagesRepo.moveChat` (run it first): on a clash the target's copy is kept, and
+   * media of messages the merge left revoked goes.
+   */
   moveChat(from: string, to: string): string[] {
     const clashes = this.db
       .query<{ local_path: string | null }, { from: string; to: string }>(
@@ -74,6 +77,15 @@ export class MediaRepo {
       )
       .all({ from, to });
     this.db.query("UPDATE media SET chat_jid = $to WHERE chat_jid = $from").run({ from, to });
-    return clashes.flatMap((row) => (row.local_path ? [row.local_path] : []));
+    const revoked = this.db
+      .query<{ local_path: string | null }, { to: string }>(
+        `DELETE FROM media
+         WHERE chat_jid = $to AND message_id IN (
+           SELECT id FROM messages WHERE chat_jid = $to AND deleted_at IS NOT NULL
+         )
+         RETURNING local_path`,
+      )
+      .all({ to });
+    return [...clashes, ...revoked].flatMap((row) => (row.local_path ? [row.local_path] : []));
   }
 }
