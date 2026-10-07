@@ -79,7 +79,7 @@ In `<dir>` (default: the current directory) this:
    claude mcp add-json --scope local wa '{"type":"http","url":"http://127.0.0.1:7373/mcp","headersHelper":"\"/path/to/wa\" mcp headers --token-file \"/path/to/token\""}'
    ```
 
-   `wa mcp headers --token-file <file>` prints `{"Authorization":"Bearer wa_…"}` and works without the engine running. If `claude mcp add-json` is refused (a Claude Code without `headersHelper`), the install falls back to `claude mcp add --transport http --scope local wa <url> --header "Authorization: Bearer <token>"` and says so; update Claude Code and install again to move the token out of its config;
+   `wa mcp headers --token-file <file>` prints `{"Authorization":"Bearer wa_…"}` and works without the engine running. If `claude mcp add-json` refuses the `headersHelper` key (an older Claude Code), the install falls back to `claude mcp add --transport http --scope local wa <url> --header "Authorization: Bearer <token>"` and says so; update Claude Code and install again to move the token out of its config;
 
 4. adds `Read(//<WA_HOME>/**)` to `permissions.deny` in `<dir>/.claude/settings.local.json`, keeping whatever else is there (`//` is how Claude Code spells an absolute path).
 

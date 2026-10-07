@@ -31,6 +31,9 @@ export function addHeaderCommand(url: string, token: string): string[] {
   ];
 }
 
+/** How a Claude Code without `headersHelper` refuses the key; any other failure is not a fallback. */
+const HEADERS_HELPER_REFUSED = /headersHelper|unrecogni[sz]ed key|unknown key/i;
+
 export type Registration = "headersHelper" | "static header";
 
 /** Replaces any earlier `wa` server of the project, preferring the headers helper. */
@@ -45,7 +48,12 @@ export async function registerWithClaude(
       `claude mcp remove failed: ${firstLine(removed.stderr || removed.stdout)}`,
     );
   }
-  if ((await exec(addJsonCommand(url, helper), { cwd: dir })).code === 0) return "headersHelper";
+  const addedJson = await exec(addJsonCommand(url, helper), { cwd: dir });
+  if (addedJson.code === 0) return "headersHelper";
+  const output = addedJson.stderr || addedJson.stdout;
+  if (!HEADERS_HELPER_REFUSED.test(output)) {
+    throw new FailureError(`claude mcp add-json failed: ${firstLine(output)}`);
+  }
   const added = await exec(addHeaderCommand(url, token), { cwd: dir });
   if (added.code !== 0) {
     throw new FailureError(`claude mcp add failed: ${firstLine(added.stderr || added.stdout)}`);

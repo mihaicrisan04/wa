@@ -196,8 +196,11 @@ describe("against a running engine", () => {
     await rm(project, { recursive: true, force: true });
   });
 
-  test("falls back to a static header when add-json is refused", async () => {
-    const { calls, exec } = recorder([OK, { code: 1, stdout: "", stderr: "unknown key" }]);
+  test("falls back to a static header when add-json refuses the headersHelper key", async () => {
+    const { calls, exec } = recorder([
+      OK,
+      { code: 1, stdout: "", stderr: 'Invalid configuration: Unrecognized key: "headersHelper"' },
+    ]);
     const result = await run(["mcp", "install", "--profile", "master", "--project", project], env, {
       exec,
     });
@@ -210,6 +213,18 @@ describe("against a running engine", () => {
       ["claude", "mcp", "add"],
     ]);
     expect(calls[2]!.argv).toEqual(addHeaderCommand("http://127.0.0.1:7399/mcp", token));
+    await rm(project, { recursive: true, force: true });
+  });
+
+  test("any other add-json failure stops the install without storing the token in Claude's config", async () => {
+    const { calls, exec } = recorder([OK, { code: 1, stdout: "", stderr: "config is locked" }]);
+    const result = await run(["mcp", "install", "--profile", "master", "--project", project], env, {
+      exec,
+    });
+    expect(result).toMatchObject({ code: 1 });
+    expect(result.err).toContain("wa mcp: claude mcp add-json failed: config is locked");
+    expect(result.err).not.toContain("no headersHelper");
+    expect(calls).toHaveLength(2);
     await rm(project, { recursive: true, force: true });
   });
 
