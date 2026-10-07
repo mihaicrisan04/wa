@@ -32,6 +32,11 @@ export class Store {
     return this.db.transaction(work)();
   }
 
+  /** Like `transaction`, but takes the write lock before the first read. */
+  writeTransaction<T>(work: () => T): T {
+    return this.db.transaction(work).immediate();
+  }
+
   /** Deletes disappearing messages past their expiry; returns cached files to remove. */
   purgeExpired(now: number = nowSeconds()): string[] {
     return this.transaction(() =>

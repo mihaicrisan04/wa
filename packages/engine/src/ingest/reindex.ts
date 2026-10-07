@@ -24,10 +24,10 @@ export function reindex(store: Store, me: OwnIdentity | null, logger: Logger): R
   const result: ReindexResult = { rewritten: 0, skipped: 0 };
   let after = 0;
   for (;;) {
-    const rows = store.messages.page(after, PAGE_SIZE);
-    if (!rows.length) break;
-    store.transaction(() => {
-      for (const row of rows) {
+    // the engine may write meanwhile: read each page under the write lock, so no row goes stale
+    const rows = store.writeTransaction(() => {
+      const page = store.messages.page(after, PAGE_SIZE);
+      for (const row of page) {
         after = row.rowid;
         const normalized = row.raw ? safeNormalize(row.raw, row.source, identity, logger) : null;
         if (normalized?.kind !== "message") {
@@ -41,7 +41,9 @@ export function reindex(store: Store, me: OwnIdentity | null, logger: Logger): R
         }
         result.rewritten++;
       }
+      return page;
     });
+    if (!rows.length) break;
   }
   return result;
 }
