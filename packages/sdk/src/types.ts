@@ -255,3 +255,35 @@ export interface AuditEntry {
   chat: string | null;
   detail: Record<string, unknown> | null;
 }
+
+/**
+ * Why a backfill stopped: `max` reached, `empty` (WhatsApp has nothing older), `timeout` (the
+ * phone did not answer), `no_anchor` (nothing stored in the chat to page back from),
+ * `disconnected`, `stopped` (the engine shut down) or `failed`.
+ */
+export type BackfillStopReason =
+  | "max"
+  | "empty"
+  | "timeout"
+  | "no_anchor"
+  | "disconnected"
+  | "stopped"
+  | "failed";
+
+/** A `wa backfill` run: pages of older messages requested from the phone, one after another. */
+export interface BackfillJob {
+  id: string;
+  chat: string;
+  chatName: string | null;
+  state: "running" | "done";
+  max: number;
+  /** Older messages stored so far. */
+  fetched: number;
+  /** History requests sent to the phone. */
+  requests: number;
+  /** Unix seconds of the chat's oldest stored message. */
+  oldestAt: number | null;
+  stopReason: BackfillStopReason | null;
+  startedAt: number;
+  finishedAt: number | null;
+}

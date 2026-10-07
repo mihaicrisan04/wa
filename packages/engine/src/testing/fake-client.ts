@@ -13,6 +13,7 @@ import {
   type SignalRepositoryWithLIDStore,
   type WAMessage,
   type WAMessageKey,
+  toNumber,
 } from "@whiskeysockets/baileys";
 import pino from "pino";
 import type { WhatsAppClient } from "../whatsapp/client";
@@ -38,7 +39,27 @@ export interface HistoryRequest {
   requestId: string;
   count: number;
   oldestKey: WAMessageKey;
+  /** Milliseconds, as Baileys sends it. */
   oldestTimestamp: number;
+}
+
+/** The phone's side of `fetchMessageHistory`: messages to answer with, or null to stay silent. */
+export type HistoryResponder = (request: HistoryRequest) => WAMessage[] | null;
+
+/**
+ * A phone holding `archive`: answers each request with up to `count` messages of the requested
+ * jid older than the oldest timestamp, newest first like WhatsApp; empty once there are none.
+ */
+export function phoneArchive(archive: WAMessage[]): HistoryResponder {
+  return ({ count, oldestKey, oldestTimestamp }) =>
+    archive
+      .filter(
+        (message) =>
+          message.key.remoteJid === oldestKey.remoteJid &&
+          toNumber(message.messageTimestamp) * 1000 < oldestTimestamp,
+      )
+      .sort((a, b) => toNumber(b.messageTimestamp) - toNumber(a.messageTimestamp))
+      .slice(0, count);
 }
 
 /**
@@ -96,6 +117,8 @@ export class FakeWhatsAppClient implements WhatsAppClient {
   readonly sent: SentMessage[] = [];
   readonly historyRequests: HistoryRequest[] = [];
   readonly mediaReuploads: WAMessage[] = [];
+  /** Answers history requests on its own, later, like the phone; unset means tests answer by hand. */
+  answerHistory: HistoryResponder | null = null;
   /** Throw from `sendMessage` while set, to simulate a flaky connection. */
   sendFailure: Error | null = null;
   /** What `updateMediaMessage` returns; defaults to the message with a fresh directPath. */
@@ -168,7 +191,7 @@ export class FakeWhatsAppClient implements WhatsAppClient {
   }
 
   /** Answers a `fetchMessageHistory` request the way WhatsApp does: later, as an ON_DEMAND history set. */
-  respondToHistory(requestId: string, messages: WAMessage[]): void {
+  respondToHistory(requestId: string | null, messages: WAMessage[]): void {
     this.emit(
       "messaging-history.set",
       historySet({
@@ -216,7 +239,10 @@ export class FakeWhatsAppClient implements WhatsAppClient {
     const requestId = fixtureId();
     const timestamp =
       typeof oldestTimestamp === "number" ? oldestTimestamp : oldestTimestamp.toNumber();
-    this.historyRequests.push({ requestId, count, oldestKey, oldestTimestamp: timestamp });
+    const request = { requestId, count, oldestKey, oldestTimestamp: timestamp };
+    this.historyRequests.push(request);
+    const answer = this.answerHistory?.(request);
+    if (answer) setTimeout(() => this.respondToHistory(requestId, answer), 0);
     return requestId;
   };
 

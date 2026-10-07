@@ -144,6 +144,9 @@ export const content = {
 
 export type HistorySet = BaileysEventMap["messaging-history.set"];
 
+/** Re-exported so packages without a Baileys dependency can build history events. */
+export const HistorySyncType = proto.HistorySync.HistorySyncType;
+
 export function historySet(partial: Partial<HistorySet> = {}): HistorySet {
   return {
     chats: [],
