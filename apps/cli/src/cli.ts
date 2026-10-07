@@ -20,6 +20,7 @@ import { reindex } from "./commands/reindex";
 import { search } from "./commands/search";
 import { selftest } from "./commands/selftest";
 import { serve } from "./commands/serve";
+import { service } from "./commands/service";
 import { status } from "./commands/status";
 import { tokens } from "./commands/tokens";
 import { EngineUnavailableError } from "./engine-client";
@@ -27,6 +28,7 @@ import { who } from "./output";
 
 export const COMMANDS: Command[] = [
   serve,
+  service,
   link,
   status,
   chats,
