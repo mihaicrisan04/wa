@@ -1,9 +1,12 @@
+import { CollectionsRepo, ProfilesRepo, TokensRepo } from "./access";
+import { AuditRepo } from "./audit";
 import { ChatsRepo } from "./chats";
 import { ContactsRepo } from "./contacts";
 import { nowSeconds, openDatabase, type Database } from "./db";
 import { IdentityRepo } from "./identity";
 import { MediaRepo } from "./media";
 import { MessagesRepo } from "./messages";
+import { OutboxRepo } from "./outbox";
 import { ParticipantsRepo } from "./participants";
 import { searchMessages, type SearchHit, type SearchOptions } from "./search";
 import { SyncRepo } from "./sync";
@@ -16,6 +19,11 @@ export class Store {
   readonly messages: MessagesRepo;
   readonly media: MediaRepo;
   readonly sync: SyncRepo;
+  readonly collections: CollectionsRepo;
+  readonly profiles: ProfilesRepo;
+  readonly tokens: TokensRepo;
+  readonly outbox: OutboxRepo;
+  readonly audit: AuditRepo;
 
   constructor(readonly db: Database) {
     this.chats = new ChatsRepo(db);
@@ -25,6 +33,11 @@ export class Store {
     this.messages = new MessagesRepo(db);
     this.media = new MediaRepo(db);
     this.sync = new SyncRepo(db);
+    this.collections = new CollectionsRepo(db);
+    this.profiles = new ProfilesRepo(db);
+    this.tokens = new TokensRepo(db);
+    this.outbox = new OutboxRepo(db);
+    this.audit = new AuditRepo(db);
   }
 
   /** Runs `work` in one SQLite transaction (nested calls become savepoints). */
@@ -62,6 +75,9 @@ export function openStore(path: string): Store {
 }
 
 export { nowSeconds } from "./db";
+export type { CollectionRow, ProfileRecord, ProfileSpec, TokenRow } from "./access";
+export type { AuditRecord, AuditRow } from "./audit";
+export type { NewOutboxEntry, OutboxPayload, OutboxRow, OutboxStatus } from "./outbox";
 export type { ChatKind, ChatPatch, ChatRow } from "./chats";
 export type { ContactPatch, ContactRow } from "./contacts";
 export type { MediaRow } from "./media";

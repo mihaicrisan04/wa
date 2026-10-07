@@ -5,4 +5,4 @@ export {
   type WaClient,
   type WaClientOptions,
 } from "./client";
-export type { ApiErrorBody, Health } from "./types";
+export * from "./types";
