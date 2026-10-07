@@ -1,10 +1,18 @@
 import { ConfigError, ENGINE_VERSION } from "@wa/engine";
 import { WaApiError } from "@wa/sdk";
-import { EXIT_FAILURE, EXIT_USAGE, UsageError, type Command, type CommandIO } from "./command";
+import {
+  EXIT_FAILURE,
+  EXIT_USAGE,
+  FailureError,
+  UsageError,
+  type Command,
+  type CommandIO,
+} from "./command";
 import { audit } from "./commands/audit";
 import { chats } from "./commands/chats";
 import { collections } from "./commands/collections";
 import { link } from "./commands/link";
+import { mcp } from "./commands/mcp";
 import { profiles } from "./commands/profiles";
 import { read } from "./commands/read";
 import { reindex } from "./commands/reindex";
@@ -27,6 +35,7 @@ export const COMMANDS: Command[] = [
   profiles,
   tokens,
   audit,
+  mcp,
   reindex,
   selftest,
 ];
@@ -67,7 +76,7 @@ function report(name: string, err: unknown, io: CommandIO): number {
     io.err(`wa ${name}: ${err.message}`);
     return EXIT_USAGE;
   }
-  if (err instanceof EngineUnavailableError) {
+  if (err instanceof EngineUnavailableError || err instanceof FailureError) {
     io.err(`wa ${name}: ${err.message}`);
     return EXIT_FAILURE;
   }

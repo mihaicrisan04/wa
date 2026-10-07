@@ -11,7 +11,14 @@ export {
 export { startEngine, type Engine, type StartEngineOptions } from "./engine";
 export { EngineRunningError } from "./api/socket";
 export { createApp, type App, type ApiDeps, type Transport } from "./api/app";
-export { RAYCAST_PROFILE, authenticate, hashToken, issueToken, raycastTokenPath } from "./access";
+export {
+  RAYCAST_PROFILE,
+  authenticate,
+  hashToken,
+  issueToken,
+  raycastTokenPath,
+  tokensDir,
+} from "./access";
 export { ADMIN, assertCan, can, scopeSql, type Principal } from "./policy";
 export { Outbox, type OutgoingMessage } from "./outbox";
 export { Ingest, reindex, type ReindexResult } from "./ingest";
