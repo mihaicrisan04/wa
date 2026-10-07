@@ -70,9 +70,11 @@ type AnyContent = {
   contextInfo?: proto.IContextInfo | null;
   mimetype?: string | null;
   fileLength?: Parameters<typeof toNumber>[0];
+  viewOnce?: boolean | null;
 };
 
-function inner(content: proto.IMessage, type: ContentType): AnyContent {
+/** The body of `content`'s `type` field, read through the fields message types share. */
+export function bodyOf(content: proto.IMessage, type: ContentType): AnyContent {
   const value = content[type];
   return value && typeof value === "object" ? (value as AnyContent) : {};
 }
@@ -83,7 +85,7 @@ export function textOf(content: proto.IMessage | null | undefined): ContentText 
   const type = contentTypeOf(content);
   if (!content || !type) return empty;
   if (type === "conversation") return { ...empty, text: content.conversation || null };
-  const body = inner(content, type);
+  const body = bodyOf(content, type);
   if (MEDIA_TYPES.has(type)) {
     return { text: null, caption: body.caption || null, fileName: body.fileName || null };
   }
@@ -105,7 +107,7 @@ export function textOf(content: proto.IMessage | null | undefined): ContentText 
 export function mediaOf(content: proto.IMessage | null | undefined): MediaInfo | null {
   const type = contentTypeOf(content);
   if (!content || !type || !MEDIA_TYPES.has(type)) return null;
-  const body = inner(content, type);
+  const body = bodyOf(content, type);
   return {
     kind: typeName(type),
     mimetype: body.mimetype || null,
@@ -119,7 +121,7 @@ export function contextInfoOf(
 ): proto.IContextInfo | null {
   const type = contentTypeOf(content);
   if (!content || !type) return null;
-  return inner(content, type).contextInfo ?? null;
+  return bodyOf(content, type).contextInfo ?? null;
 }
 
 /**
@@ -132,6 +134,6 @@ export function applyEditedText(original: proto.IMessage, edited: proto.IMessage
   const type = contentTypeOf(original);
   if (!type || replacement === null) return;
   if (type === "conversation") original.conversation = replacement;
-  else if (type === "extendedTextMessage") inner(original, type).text = replacement;
-  else if (MEDIA_TYPES.has(type)) inner(original, type).caption = replacement;
+  else if (type === "extendedTextMessage") bodyOf(original, type).text = replacement;
+  else if (MEDIA_TYPES.has(type)) bodyOf(original, type).caption = replacement;
 }
