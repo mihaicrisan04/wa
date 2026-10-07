@@ -2,7 +2,7 @@
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "wa",
   "title": "WhatsApp",
-  "description": "Send clipboard content to WhatsApp chats through the local wa engine",
+  "description": "Send clipboard content to WhatsApp chats and search your messages through the local wa engine",
   "icon": "icon.png",
   "author": "mihai",
   "categories": [
@@ -26,6 +26,12 @@
       "name": "pick-item",
       "title": "Pick Item to Send",
       "description": "Pick from recent clipboard items and send one to WhatsApp",
+      "mode": "view"
+    },
+    {
+      "name": "search-messages",
+      "title": "Search Messages",
+      "description": "Search your WhatsApp messages stored by the wa engine",
       "mode": "view"
     },
     {

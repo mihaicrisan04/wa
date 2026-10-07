@@ -24,6 +24,8 @@ declare namespace Preferences {
   export type SendToChat = ExtensionPreferences & {}
   /** Preferences accessible in the `pick-item` command */
   export type PickItem = ExtensionPreferences & {}
+  /** Preferences accessible in the `search-messages` command */
+  export type SearchMessages = ExtensionPreferences & {}
   /** Preferences accessible in the `link` command */
   export type Link = ExtensionPreferences & {}
   /** Preferences accessible in the `status` command */
@@ -37,6 +39,8 @@ declare namespace Arguments {
   export type SendToChat = {}
   /** Arguments passed to the `pick-item` command */
   export type PickItem = {}
+  /** Arguments passed to the `search-messages` command */
+  export type SearchMessages = {}
   /** Arguments passed to the `link` command */
   export type Link = {}
   /** Arguments passed to the `status` command */
