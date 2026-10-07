@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { buildMessage, content, historySet, keyOf } from "../src/testing";
 import {
+  ANA_LID,
   ANA_PN,
   EVE_PN,
   GROUP,
@@ -61,6 +62,29 @@ describe("edits", () => {
       ],
     });
     expect(messageRows(h.store, GROUP)[0]).toMatchObject({ text: "v3", edited_at: 1_700_000_900 });
+  });
+
+  test("the sender addressed by LID edits the message stored under the PN", async () => {
+    const target = original();
+    await upsert(target);
+    const lidKey = { participant: ANA_LID, participantAlt: ANA_PN, addressingMode: "lid" as const };
+    await upsert(
+      buildMessage({ chat: GROUP, ...lidKey, message: content.edit(keyOf(target), "v2") }),
+    );
+    expect(messageRows(h.store, GROUP)[0]).toMatchObject({ text: "v2" });
+
+    await h.emit({
+      "messages.update": [
+        {
+          key: { ...keyOf(target), ...lidKey },
+          update: {
+            message: { editedMessage: { message: { conversation: "v3" } } },
+            messageTimestamp: 1_900_000_000,
+          },
+        },
+      ],
+    });
+    expect(messageRows(h.store, GROUP)[0]).toMatchObject({ text: "v3", edited_at: 1_900_000_000 });
   });
 
   test("a spoofed edit from someone else is ignored", async () => {
