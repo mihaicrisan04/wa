@@ -2,7 +2,7 @@ import { chmod, mkdir, rm } from "node:fs/promises";
 import type { Server } from "bun";
 import { ensureRaycastAccess } from "./access";
 import { createApp, type ApiDeps, type App } from "./api/app";
-import { listenOnSocket } from "./api/socket";
+import { claimSocket, listenOnSocket } from "./api/socket";
 import {
   databasePath,
   ENGINE_VERSION,
@@ -55,6 +55,8 @@ export async function startEngine(
   restrictFileModes();
   await mkdir(config.home, { recursive: true, mode: 0o700 });
   await chmod(config.home, 0o700);
+  const adminSocket = socketPath(config.home);
+  await claimSocket(adminSocket);
 
   const logger = options.logger ?? createLogger(config.logLevel);
   const store = openStore(databasePath(config.home));
@@ -108,7 +110,6 @@ export async function startEngine(
       { kind: "unix" },
     ),
   };
-  const adminSocket = socketPath(config.home);
 
   const stop = async () => {
     clearInterval(purge);

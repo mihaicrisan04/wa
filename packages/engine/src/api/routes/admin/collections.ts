@@ -77,7 +77,9 @@ function detail(ctx: ReadContext, name: string): CollectionDetail {
     const named = ctx.store.db
       .query<{ name: string | null; kind: ChatCandidate["kind"] }, { jid: string }>(
         `SELECT coalesce(ch.name, ct.name, ct.verified_name, ct.push_name) AS name, ch.kind
-         FROM chats AS ch LEFT JOIN contacts AS ct ON ct.jid = ch.jid WHERE ch.jid = $jid`,
+         FROM (SELECT $jid AS jid) AS member
+         LEFT JOIN chats AS ch ON ch.jid = member.jid
+         LEFT JOIN contacts AS ct ON ct.jid = member.jid`,
       )
       .get({ jid });
     return { jid, name: named?.name ?? null, kind: named?.kind ?? ctx.identity.kindOf(jid) };
