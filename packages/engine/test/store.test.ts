@@ -265,6 +265,17 @@ describe("disappearing messages", () => {
     expect(count(store, "SELECT id FROM messages")).toBe(2);
     expect(count(store, "SELECT * FROM media")).toBe(0);
   });
+
+  test("purging also drops revokes that waited a month for their message", () => {
+    const now = nowSeconds();
+    const actor = { fromMe: false, jid: ANA_PN };
+    store.pendingRevokes.add({ chatJid: ANA_PN, id: "stale" }, { actor, ts: now - 31 * 86_400 });
+    store.pendingRevokes.add({ chatJid: ANA_PN, id: "fresh" }, { actor, ts: now - 86_400 });
+
+    store.purgeExpired(now);
+    expect(store.pendingRevokes.take({ chatJid: ANA_PN, id: "stale" })).toEqual([]);
+    expect(store.pendingRevokes.take({ chatJid: ANA_PN, id: "fresh" })).toHaveLength(1);
+  });
 });
 
 describe("sync state", () => {

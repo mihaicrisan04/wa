@@ -1,6 +1,9 @@
 import type { Database } from "./db";
 import type { MessageKeyRef } from "./messages";
 
+/** How long a revoke waits for its message before it is dropped, in seconds. */
+export const PENDING_REVOKE_TTL = 30 * 24 * 60 * 60;
+
 /** A revoke whose target's sender is not known yet. */
 export interface PendingRevoke {
   actor: { fromMe: boolean; jid: string | null };
@@ -33,6 +36,11 @@ export class PendingRevokesRepo {
         actor: { fromMe: row.actor_from_me === 1, jid: row.actor_jid },
         ts: row.ts,
       }));
+  }
+
+  /** Drops revokes made before `before` (unix seconds); their message is unlikely to ever arrive. */
+  prune(before: number): void {
+    this.db.query("DELETE FROM pending_revokes WHERE ts < $before").run({ before });
   }
 
   moveChat(from: string, to: string): void {
