@@ -134,12 +134,6 @@ function apply(ctx: IngestContext, batch: Batch): HistoryPage | null {
   return page;
 }
 
-export {
-  HISTORY_PHASES_KEY,
-  readHistoryPhases,
-  type HistoryPage,
-  type HistoryPhase,
-  type HistoryPhases,
-} from "./history";
+export type { HistoryPage } from "./history";
 export { Identity } from "./lid";
 export { reindex, type ReindexResult } from "./reindex";

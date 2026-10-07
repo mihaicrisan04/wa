@@ -99,4 +99,5 @@ export {
 } from "./messages";
 export type { Member } from "./participants";
 export type { PendingRevoke } from "./pending-revokes";
+export type { HistoryPhaseState, HistoryPhases } from "./sync";
 export { toFtsQuery, type SearchHit, type SearchOptions } from "./search";

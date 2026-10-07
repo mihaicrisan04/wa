@@ -280,10 +280,13 @@ describe("disappearing messages", () => {
 });
 
 describe("sync state", () => {
-  test("stores JSON values", () => {
-    expect(store.sync.get("history.progress")).toBeNull();
-    store.sync.set("history.progress", { progress: 42 });
-    store.sync.set("history.progress", { progress: 43 });
-    expect(store.sync.get<{ progress: number }>("history.progress")).toEqual({ progress: 43 });
+  test("keeps the latest history phases until they are cleared", () => {
+    const phase = { progress: 42, status: null, explicit: null, chunks: 1, updatedAt: 1 };
+    expect(store.sync.historyPhases()).toEqual({});
+    store.sync.setHistoryPhases({ full: phase });
+    store.sync.setHistoryPhases({ full: { ...phase, progress: 43 } });
+    expect(store.sync.historyPhases()).toEqual({ full: { ...phase, progress: 43 } });
+    store.sync.clearHistoryPhases();
+    expect(store.sync.historyPhases()).toEqual({});
   });
 });

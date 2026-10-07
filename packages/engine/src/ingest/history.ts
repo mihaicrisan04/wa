@@ -1,29 +1,13 @@
-import type { HistorySyncStatus } from "@wa/sdk";
 import { proto, type BaileysEventMap } from "@whiskeysockets/baileys";
-import type { Normalized } from "../whatsapp/normalize";
 import { nowSeconds } from "../clock";
+import type { HistoryPhaseState } from "../store";
+import type { Normalized } from "../whatsapp/normalize";
 import { ingestChat, ingestContact } from "./chats-contacts";
 import type { IngestContext } from "./context";
 import { ingestPastParticipants } from "./groups";
 import { storeMessages, type Carriers } from "./messages";
 
 const { HistorySyncType } = proto.HistorySync;
-
-export const HISTORY_PHASES_KEY = "history.phases";
-
-/** What WhatsApp reported about one history sync type (`initial_bootstrap`, `recent`, `full`…). */
-export interface HistoryPhase {
-  /** 0-100 from the phase's last chunk. */
-  progress: number | null;
-  status: HistorySyncStatus | null;
-  /** False when Baileys inferred the status from silence instead of WhatsApp saying so. */
-  explicit: boolean | null;
-  chunks: number;
-  /** Unix seconds of the last chunk or status. */
-  at: number;
-}
-
-export type HistoryPhases = Record<string, HistoryPhase>;
 
 /** An answer to `fetchMessageHistory`, once it is stored. */
 export interface HistoryPage {
@@ -74,29 +58,25 @@ export function recordHistoryStatus(
   updatePhase(ctx, syncTypeName(syncType), (phase) => ({ ...phase, status, explicit }));
 }
 
-export function readHistoryPhases(ctx: Pick<IngestContext, "store">): HistoryPhases {
-  return ctx.store.sync.get<HistoryPhases>(HISTORY_PHASES_KEY) ?? {};
-}
-
 function updatePhase(
   ctx: IngestContext,
   name: string,
-  change: (phase: HistoryPhase) => Omit<HistoryPhase, "at">,
+  change: (phase: HistoryPhaseState) => Omit<HistoryPhaseState, "updatedAt">,
 ): void {
-  const phases = readHistoryPhases(ctx);
+  const phases = ctx.store.sync.historyPhases();
   const current = phases[name] ?? {
     progress: null,
     status: null,
     explicit: null,
     chunks: 0,
-    at: 0,
+    updatedAt: 0,
   };
-  phases[name] = { ...change(current), at: nowSeconds() };
-  ctx.store.sync.set(HISTORY_PHASES_KEY, phases);
+  phases[name] = { ...change(current), updatedAt: nowSeconds() };
+  ctx.store.sync.setHistoryPhases(phases);
 }
 
 /** A chunk after a pause Baileys guessed from silence: the sync was not paused after all. */
-function resumed(phase: HistoryPhase): HistoryPhase {
+function resumed(phase: HistoryPhaseState): HistoryPhaseState {
   return { ...phase, status: null, explicit: null };
 }
 
