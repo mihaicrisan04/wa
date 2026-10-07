@@ -12,7 +12,7 @@ import type { ClientFactory, SocketHooks } from "./client";
 
 export function baileysClientFactory(logger: Logger): ClientFactory {
   const socketLogger = baileysLogger(logger);
-  return async (auth, hooks = {}) => {
+  return async (auth, hooks) => {
     const { version, isLatest, error } = await fetchLatestBaileysVersion();
     if (error)
       logger.warn({ err: error, version }, "could not fetch the latest WhatsApp web version");
@@ -41,8 +41,8 @@ export function socketConfig({
     shouldSyncHistoryMessage: () => true,
     // staying "online" stops notifications on the phone
     markOnlineOnConnect: false,
-    getMessage: hooks.getMessage ?? (async () => undefined),
-    cachedGroupMetadata: hooks.cachedGroupMetadata ?? (async () => undefined),
+    getMessage: hooks.getMessage,
+    cachedGroupMetadata: hooks.cachedGroupMetadata,
     logger,
   };
 }

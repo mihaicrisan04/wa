@@ -26,7 +26,6 @@ export interface IngestOptions {
   logger: Logger;
   /** Own identity from the persisted credentials. */
   me: () => OwnIdentity | null;
-  groups?: GroupCache;
 }
 
 /**
@@ -34,13 +33,11 @@ export interface IngestOptions {
  * strictly one after another.
  */
 export class Ingest {
-  readonly groups: GroupCache;
+  readonly groups = new GroupCache();
   private queue: Promise<void> = Promise.resolve();
   private readonly pageListeners = new Set<(page: HistoryPage) => void>();
 
-  constructor(private readonly options: IngestOptions) {
-    this.groups = options.groups ?? new GroupCache();
-  }
+  constructor(private readonly options: IngestOptions) {}
 
   /** Subscribes to a socket's events; Baileys drops the listener when the socket is retired. */
   attach(client: WhatsAppClient): void {

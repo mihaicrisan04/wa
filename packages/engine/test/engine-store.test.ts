@@ -22,7 +22,7 @@ beforeEach(async () => {
   temp = await makeTempHome();
   engine = await startEngine(temp.config, {
     client: (_auth, given) => {
-      hooks = given ?? {};
+      hooks = given;
       client = new FakeWhatsAppClient();
       return client;
     },

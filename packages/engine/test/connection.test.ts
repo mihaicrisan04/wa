@@ -4,12 +4,14 @@ import { join } from "node:path";
 import { DisconnectReason } from "@whiskeysockets/baileys";
 import pino from "pino";
 import { FakeWhatsAppClient, makeTempHome, type FakeIdentity, type TempHome } from "../src/testing";
-import type { ClientFactory } from "../src/whatsapp/client";
 import {
   AlreadyLinkedError,
   PREVIOUS_AUTH_DIR,
   WhatsAppConnection,
+  type ConnectionOptions,
 } from "../src/whatsapp/connection";
+
+type CreateClient = ConnectionOptions["createClient"];
 
 const ME: FakeIdentity = { id: "40700000001:7@s.whatsapp.net", lid: "123456789:7@lid", name: "Me" };
 
@@ -23,7 +25,7 @@ function newFakeClient(): FakeWhatsAppClient {
   return client;
 }
 
-function newConnection(createClient: ClientFactory = newFakeClient): WhatsAppConnection {
+function newConnection(createClient: CreateClient = newFakeClient): WhatsAppConnection {
   return new WhatsAppConnection({
     home: temp.home,
     logger: pino({ level: "silent" }),
@@ -257,7 +259,7 @@ describe("socket creation failures", () => {
   let attempts: Array<{ resolve: () => void; reject: (err: Error) => void }>;
 
   /** Each socket creation waits until the test resolves or rejects it. */
-  function controlledFactory(): ClientFactory {
+  function controlledFactory(): CreateClient {
     return () =>
       new Promise<FakeWhatsAppClient>((resolve, reject) => {
         attempts.push({ resolve: () => resolve(newFakeClient()), reject });

@@ -14,7 +14,7 @@ import { nowSeconds } from "../clock";
 import { authDir } from "../config";
 import type { Logger } from "../logger";
 import { boomStatus } from "./boom";
-import type { ClientEvents, ClientFactory, WhatsAppClient } from "./client";
+import type { ClientEvents, WhatsAppClient } from "./client";
 
 export interface OwnIdentity {
   pn: string;
@@ -32,7 +32,8 @@ export interface ConnectionStatus {
 export interface ConnectionOptions {
   home: string;
   logger: Logger;
-  createClient: ClientFactory;
+  /** A socket for the persisted auth state, on every (re)connect. */
+  createClient: (auth: AuthenticationState) => WhatsAppClient | Promise<WhatsAppClient>;
   backoff?: Backoff;
 }
 
