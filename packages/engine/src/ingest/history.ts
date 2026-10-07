@@ -1,7 +1,7 @@
 import type { HistorySyncStatus } from "@wa/sdk";
 import { proto, type BaileysEventMap } from "@whiskeysockets/baileys";
 import type { Normalized } from "../whatsapp/normalize";
-import { nowSeconds } from "../store";
+import { nowSeconds } from "../clock";
 import { ingestChat, ingestContact } from "./chats-contacts";
 import type { IngestContext } from "./context";
 import { ingestPastParticipants } from "./groups";

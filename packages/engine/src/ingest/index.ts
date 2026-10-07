@@ -1,9 +1,9 @@
 import type { WAMessageKey, proto } from "@whiskeysockets/baileys";
+import { removeFiles } from "../fs";
 import type { Logger } from "../logger";
 import type { Store } from "../store";
 import type { WhatsAppClient } from "../whatsapp/client";
 import type { OwnIdentity } from "../whatsapp/connection";
-import { removeCachedFiles } from "../whatsapp/media";
 import { chatOf } from "../whatsapp/normalize";
 import { parseRaw } from "../whatsapp/raw";
 import { deleteChats, ingestChat, ingestChatUpdate, ingestContact } from "./chats-contacts";
@@ -100,7 +100,7 @@ export class Ingest {
     }
     this.groups.apply(batch);
     if (page) for (const listener of this.pageListeners) listener(page);
-    await removeCachedFiles(ctx.orphanedFiles, logger);
+    await removeFiles(ctx.orphanedFiles, logger);
   }
 }
 

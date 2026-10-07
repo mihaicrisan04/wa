@@ -11,7 +11,8 @@ import {
   type WAMessageKey,
   type WAMessageUpdate,
 } from "@whiskeysockets/baileys";
-import { nowSeconds, PLACEHOLDER_TYPE, REVOKED_TYPE, type MessageRecord } from "../store";
+import { nowSeconds } from "../clock";
+import { PLACEHOLDER_TYPE, REVOKED_TYPE, type MessageRecord } from "../store";
 import { CARRIER_TYPES, contentTypeOf, contextInfoOf, mediaOf, textOf, typeName } from "./content";
 import { serializeRaw } from "./raw";
 

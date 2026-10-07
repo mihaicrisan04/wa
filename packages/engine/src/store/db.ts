@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { nowSeconds } from "../clock";
 import { MIGRATIONS, type Migration } from "./migrations";
 
 export type { Database };
@@ -35,8 +36,4 @@ export function migrate(db: Database, migrations: Migration[]): void {
       });
     })();
   }
-}
-
-export function nowSeconds(): number {
-  return Math.floor(Date.now() / 1000);
 }

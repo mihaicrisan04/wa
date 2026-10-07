@@ -1,4 +1,5 @@
-import { nowSeconds, type Database } from "./db";
+import { nowSeconds } from "../clock";
+import type { Database } from "./db";
 
 export interface AuditRow {
   id: number;

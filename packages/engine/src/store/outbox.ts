@@ -1,5 +1,6 @@
 import type { OutboxStatus } from "@wa/sdk";
-import { nowSeconds, type Database } from "./db";
+import { nowSeconds } from "../clock";
+import type { Database } from "./db";
 
 /** What to send; the file bytes themselves live at `file_path`. */
 export type OutboxPayload = (

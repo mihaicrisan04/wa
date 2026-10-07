@@ -1,6 +1,7 @@
 import type { HistoryPhase as PhaseInfo, HistorySync } from "@wa/sdk";
 import { readHistoryPhases, type HistoryPhase } from "../ingest";
-import { nowSeconds, type Store } from "../store";
+import { nowSeconds } from "../clock";
+import type { Store } from "../store";
 
 /** Baileys calls a sync paused after this long without a chunk; same rule for the full sync. */
 export const HISTORY_STALL_SECONDS = 120;

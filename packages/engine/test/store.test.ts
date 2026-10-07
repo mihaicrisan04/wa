@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { migrate, openDatabase } from "../src/store/db";
 import { MIGRATIONS } from "../src/store/migrations";
-import { nowSeconds, openStore, toFtsQuery, type MessageRecord, type Store } from "../src/store";
+import { nowSeconds } from "../src/clock";
+import { openStore, toFtsQuery, type MessageRecord, type Store } from "../src/store";
 import { ANA_PN } from "./support/jids";
 
 let store: Store;

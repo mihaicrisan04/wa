@@ -1,7 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
-import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { chmod, readFile } from "node:fs/promises";
 import type { ProfileCapability } from "@wa/sdk";
+import { raycastTokenPath } from "./config";
+import { writeFileAtomic } from "./fs";
 import type { TokenPrincipal } from "./policy";
 import type { ProfileSpec, Store, TokenRow } from "./store";
 
@@ -16,14 +17,6 @@ export const RAYCAST_PROFILE: ProfileSpec = {
 export const BUILTIN_PROFILES: ReadonlySet<string> = new Set([RAYCAST_PROFILE.name]);
 
 const RAYCAST_TOKEN_LABEL = "raycast (built-in)";
-
-export function tokensDir(home: string): string {
-  return join(home, "tokens");
-}
-
-export function raycastTokenPath(home: string): string {
-  return join(tokensDir(home), "raycast.token");
-}
 
 /** `wa_` + base64url(32 random bytes). */
 function generateToken(): string {
@@ -84,8 +77,5 @@ export async function ensureRaycastAccess(store: Store, home: string): Promise<v
     if (row.label === RAYCAST_TOKEN_LABEL) store.tokens.revoke(row.id);
   }
   const { token } = issueToken(store, RAYCAST_PROFILE.name, RAYCAST_TOKEN_LABEL);
-  await mkdir(tokensDir(home), { recursive: true, mode: 0o700 });
-  const partial = `${path}.${process.pid}.part`;
-  await writeFile(partial, `${token}\n`, { mode: 0o600 });
-  await rename(partial, path);
+  await writeFileAtomic(path, `${token}\n`);
 }

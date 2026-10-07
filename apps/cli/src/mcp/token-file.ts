@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { tokensDir } from "@wa/engine";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tokensDir, writeFileAtomic } from "@wa/engine";
 import { FailureError } from "../command";
 
 const TOKEN_FORMAT = /^wa_[A-Za-z0-9_-]{43}$/;
@@ -18,11 +18,7 @@ export function mcpTokenPath(home: string, profile: string, suffix: string): str
 
 /** Written whole or not at all, and only ever readable by the owner. */
 export async function writeTokenFile(path: string, token: string): Promise<void> {
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  const partial = `${path}.${process.pid}.part`;
-  await writeFile(partial, `${token}\n`, { mode: 0o600 });
-  await chmod(partial, 0o600);
-  await rename(partial, path);
+  await writeFileAtomic(path, `${token}\n`);
 }
 
 export async function readTokenFile(path: string): Promise<string> {

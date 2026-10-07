@@ -2,6 +2,7 @@ import { chmod, mkdir, rm } from "node:fs/promises";
 import { MAX_UPLOAD_BYTES } from "@wa/sdk";
 import type { Server } from "bun";
 import { ensureRaycastAccess } from "./access";
+import type { Backoff } from "./backoff";
 import { Backfills } from "./backfill";
 import { createApp, type ApiDeps, type App } from "./api/app";
 import { claimSocket, listenOnSocket } from "./api/socket";
@@ -18,15 +19,16 @@ import { Outbox } from "./outbox";
 import { openStore, type Store } from "./store";
 import type { ClientFactory, SocketHooks, WhatsAppClient } from "./whatsapp/client";
 import { WhatsAppConnection } from "./whatsapp/connection";
-import { MediaCache, removeCachedFiles, type MediaCacheOptions } from "./whatsapp/media";
+import { removeFiles } from "./fs";
+import { MediaCache, type MediaCacheOptions } from "./whatsapp/media";
 import { baileysClientFactory } from "./whatsapp/socket";
 
 export interface StartEngineOptions {
   /** A client (or factory) replacing the real Baileys socket, e.g. the fake client in tests. */
   client?: WhatsAppClient | ClientFactory;
   logger?: Logger;
-  reconnectBackoff?: { baseMs: number; maxMs: number };
-  outboxBackoff?: { baseMs: number; maxMs: number };
+  reconnectBackoff?: Backoff;
+  outboxBackoff?: Backoff;
   /** How often disappearing messages past their expiry are purged. */
   purgeIntervalMs?: number;
   /** Where MCP `download_media` exports files; `$TMPDIR/wa-export` by default. */
@@ -108,7 +110,7 @@ export async function startEngine(
   });
 
   const purge = setInterval(() => {
-    void removeCachedFiles(store.purgeExpired(), logger).catch((err: unknown) => {
+    void removeFiles(store.purgeExpired(), logger).catch((err: unknown) => {
       logger.error({ err }, "could not purge disappearing messages");
     });
     void outbox.expire();

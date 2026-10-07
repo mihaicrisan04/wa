@@ -2,7 +2,8 @@ import { randomBytes } from "node:crypto";
 import type { BackfillJob, BackfillStopReason } from "@wa/sdk";
 import type { HistoryPage, Ingest } from "./ingest";
 import type { Logger } from "./logger";
-import { nowSeconds, type OldestMessage, type Store } from "./store";
+import { nowSeconds } from "./clock";
+import type { OldestMessage, Store } from "./store";
 import type { WhatsAppClient } from "./whatsapp/client";
 
 /** The most messages WhatsApp hands out per on-demand request. */

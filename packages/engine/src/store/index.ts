@@ -2,7 +2,8 @@ import { CollectionsRepo, ProfilesRepo, TokensRepo } from "./access";
 import { AuditRepo } from "./audit";
 import { ChatsRepo } from "./chats";
 import { ContactsRepo } from "./contacts";
-import { nowSeconds, openDatabase, type Database } from "./db";
+import { nowSeconds } from "../clock";
+import { openDatabase, type Database } from "./db";
 import { IdentityRepo } from "./identity";
 import { MediaRepo } from "./media";
 import { MessagesRepo } from "./messages";
@@ -81,7 +82,6 @@ export function openStore(path: string): Store {
   return new Store(openDatabase(path));
 }
 
-export { nowSeconds } from "./db";
 export type { CollectionRow, ProfileRecord, ProfileSpec, TokenRow } from "./access";
 export type { AuditRecord, AuditRow } from "./audit";
 export type { NewOutboxEntry, OutboxPayload, OutboxRow } from "./outbox";

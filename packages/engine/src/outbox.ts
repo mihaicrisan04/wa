@@ -1,12 +1,15 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { generateMessageIDV2 } from "@whiskeysockets/baileys";
+import { backoffDelay, DEFAULT_BACKOFF, type Backoff } from "./backoff";
+import { nowSeconds } from "./clock";
+import { outboxDir } from "./config";
+import { removeFiles, writeFileAtomic } from "./fs";
 import type { Logger } from "./logger";
-import { nowSeconds, type OutboxPayload, type OutboxRow, type Store } from "./store";
+import type { OutboxPayload, OutboxRow, Store } from "./store";
 import type { WhatsAppClient } from "./whatsapp/client";
 import type { OwnIdentity } from "./whatsapp/connection";
-import { removeCachedFiles } from "./whatsapp/media";
 import { buildOutgoingContent, type OutgoingPayload } from "./whatsapp/outgoing";
 
 export type OutgoingMessage =
@@ -27,14 +30,13 @@ export interface OutboxOptions {
   /** The socket when the connection is open, null otherwise. */
   client: () => WhatsAppClient | null;
   me: () => OwnIdentity | null;
-  backoff?: { baseMs: number; maxMs: number };
+  backoff?: Backoff;
   /** How long an entry may wait before it expires instead of going out late. */
   ttlSeconds?: number;
   /** Failed sends before an entry is given up on, so one bad entry can't hold up the queue. */
   maxAttempts?: number;
 }
 
-const DEFAULT_BACKOFF = { baseMs: 1_000, maxMs: 60_000 };
 const DEFAULT_TTL_SECONDS = 60 * 60;
 const DEFAULT_MAX_ATTEMPTS = 8;
 
@@ -51,7 +53,7 @@ export class Outbox {
   private stopped = false;
 
   constructor(private readonly options: OutboxOptions) {
-    this.dir = join(options.home, "outbox");
+    this.dir = outboxDir(options.home);
     options.store.outbox.requeueInterrupted();
   }
 
@@ -64,9 +66,8 @@ export class Outbox {
     let filePath: string | null = null;
     let payload: OutboxPayload;
     if (message.kind === "file") {
-      await mkdir(this.dir, { recursive: true, mode: 0o700 });
       filePath = join(this.dir, id);
-      await writeFile(filePath, message.bytes, { mode: 0o600 });
+      await writeFileAtomic(filePath, message.bytes);
       payload = {
         kind: "file",
         caption: message.caption,
@@ -114,7 +115,7 @@ export class Outbox {
   }
 
   async expire(): Promise<void> {
-    await removeCachedFiles(this.options.store.outbox.expire(), this.options.logger);
+    await removeFiles(this.options.store.outbox.expire(), this.options.logger);
   }
 
   async stop(): Promise<void> {
@@ -186,8 +187,7 @@ export class Outbox {
 
   private scheduleRetry(): void {
     this.failures++;
-    const backoff = this.options.backoff ?? DEFAULT_BACKOFF;
-    const delay = Math.min(backoff.baseMs * 2 ** (this.failures - 1), backoff.maxMs);
+    const delay = backoffDelay(this.options.backoff ?? DEFAULT_BACKOFF, this.failures);
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
       this.flush();
@@ -200,6 +200,6 @@ export class Outbox {
   }
 
   private async removeFile(row: OutboxRow): Promise<void> {
-    if (row.file_path) await removeCachedFiles([row.file_path], this.options.logger);
+    if (row.file_path) await removeFiles([row.file_path], this.options.logger);
   }
 }

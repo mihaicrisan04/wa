@@ -1,18 +1,13 @@
-import { createHash, randomUUID } from "node:crypto";
-import { createWriteStream } from "node:fs";
-import { mkdir, rename, rm, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { rm, stat } from "node:fs/promises";
 import { extname, join } from "node:path";
-import type { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
 import { downloadMediaMessage, type WAMessage } from "@whiskeysockets/baileys";
+import { nowSeconds } from "../clock";
+import { mediaDir } from "../config";
+import { writeFileAtomic } from "../fs";
 import { baileysLogger, type Logger } from "../logger";
-import {
-  nowSeconds,
-  type MediaRow,
-  type MessageKeyRef,
-  type MessageRow,
-  type Store,
-} from "../store";
+import type { MediaRow, MessageKeyRef, MessageRow, Store } from "../store";
+import { boomStatus } from "./boom";
 import type { WhatsAppClient } from "./client";
 import { parseRaw, serializeRaw } from "./raw";
 
@@ -51,7 +46,7 @@ export class MediaCache {
   private readonly inFlight = new Map<string, Promise<CachedMedia>>();
 
   constructor(private readonly options: MediaCacheOptions) {
-    this.dir = join(options.home, "media");
+    this.dir = mediaDir(options.home);
   }
 
   /** Never derived from remote names or raw ids, so nothing a sender controls reaches the path. */
@@ -86,15 +81,7 @@ export class MediaCache {
 
     const stream = await this.download(key, parseRaw(row.raw), client);
     const path = this.pathFor(key, media);
-    await mkdir(this.dir, { recursive: true, mode: 0o700 });
-    const partial = `${path}.${randomUUID()}.part`;
-    try {
-      await pipeline(stream, createWriteStream(partial, { mode: 0o600 }));
-      await rename(partial, path);
-    } catch (err) {
-      await rm(partial, { force: true });
-      throw err;
-    }
+    await writeFileAtomic(path, stream);
     const { size } = await stat(path);
     if (!store.media.markDownloaded(key, path, size)) {
       await rm(path, { force: true });
@@ -115,23 +102,13 @@ export class MediaCache {
     };
     const ctx = { reuploadRequest, logger: baileysLogger(this.options.logger) };
     try {
-      return (await download(message, "stream", {}, ctx)) as Readable;
+      return await download(message, "stream", {}, ctx);
     } catch (err) {
-      if (reuploaded || !REUPLOAD_STATUSES.includes(httpStatusOf(err))) throw err;
+      if (reuploaded || !REUPLOAD_STATUSES.includes(boomStatus(err) ?? 0)) throw err;
       // rc14 only reuploads on `error.status`, which its Boom errors never set
-      return (await download(await reuploadRequest(message), "stream", {}, ctx)) as Readable;
+      return await download(await reuploadRequest(message), "stream", {}, ctx);
     }
   }
-}
-
-export async function removeCachedFiles(paths: string[], logger: Logger): Promise<void> {
-  await Promise.all(
-    paths.map((path) =>
-      rm(path, { force: true }).catch((err: unknown) => {
-        logger.warn({ err }, "could not remove a cached media file");
-      }),
-    ),
-  );
 }
 
 /** Revoked, or a disappearing message past its expiry that the purge has not reached yet. */
@@ -150,10 +127,4 @@ function extensionFor({ file_name, mimetype }: Pick<MediaRow, "file_name" | "mim
   if (SAFE_EXTENSION.test(fromName)) return fromName;
   const fromMime = mimetype?.split(";")[0]?.split("/")[1]?.trim().toLowerCase() ?? "";
   return SAFE_EXTENSION.test(fromMime) ? fromMime : "bin";
-}
-
-function httpStatusOf(err: unknown): number {
-  const error = err as { status?: unknown; output?: { statusCode?: unknown } } | null;
-  const status = error?.output?.statusCode ?? error?.status;
-  return typeof status === "number" ? status : 0;
 }
