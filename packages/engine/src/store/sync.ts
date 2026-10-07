@@ -19,4 +19,8 @@ export class SyncRepo {
       )
       .run({ key, value: JSON.stringify(value) });
   }
+
+  delete(key: string): void {
+    this.db.query("DELETE FROM sync_state WHERE key = $key").run({ key });
+  }
 }

@@ -6,7 +6,8 @@ export function historyLabel(history: HistorySync): string {
   if (history.status === "complete") return "Complete";
   const progress = history.progress === null ? null : `${Math.round(history.progress)}%`;
   if (history.status === "paused") return progress ? `Paused at ${progress}` : "Paused";
-  return progress ? `Syncing, ${progress}` : "Not started";
+  if (progress) return `Syncing, ${progress}`;
+  return history.phases.length ? "Syncing" : "Not started";
 }
 
 export function needsLink(status: Status): boolean {

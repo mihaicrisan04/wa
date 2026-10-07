@@ -1,5 +1,6 @@
 /** The scoped read model: every query here filters by the principal's scope in SQL. */
 export { chatName, listChats, getChat, type ChatListOptions } from "./chats";
+export { HISTORY_STALL_SECONDS, readHistorySync } from "./history";
 export { encodeCursor, decodeCursor, parseBound, parseTime } from "./cursor";
 export {
   getMessage,
