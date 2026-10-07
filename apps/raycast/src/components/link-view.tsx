@@ -29,6 +29,8 @@ async function startPairing(client: WaClient): Promise<Qr> {
 export function LinkView() {
   const [view, setView] = useState<View | null>(null);
   const [failure, setFailure] = useState<ErrorDescription | null>(null);
+  /** Bumped to restart the polling loop. */
+  const [round, setRound] = useState(0);
   const pairingStarted = useRef(false);
   const shownQr = useRef<{ qr: string; image: string } | null>(null);
 
@@ -37,8 +39,8 @@ export function LinkView() {
       const client = await engineClient();
       let step = linkStep(await client.qr(), pairingStarted.current);
       if (step.kind === "start") {
-        pairingStarted.current = true;
         step = linkStep(await startPairing(client), true);
+        pairingStarted.current = true;
       }
       const next: View = { step };
       if (step.kind === "qr") {
@@ -58,7 +60,6 @@ export function LinkView() {
     }
   }, []);
 
-  const [round, setRound] = useState(0);
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let cancelled = false;
