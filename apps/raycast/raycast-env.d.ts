@@ -8,38 +8,38 @@
 /* eslint-disable @typescript-eslint/ban-types */
 
 type ExtensionPreferences = {
-  /** Phone Number - Your WhatsApp phone number with country code (e.g. 40712345678) */
-  "phoneNumber": string,
-  /** Daemon Port - Port for the local WhatsApp daemon */
-  "daemonPort": string
+  /** Token - wa engine token; leave empty to use the one the engine writes to ~/Library/Application Support/wa/tokens/raycast.token */
+  "token"?: string,
+  /** Port - Port of the local wa engine */
+  "port": string
 }
 
 /** Preferences accessible in all the extension's commands */
 declare type Preferences = ExtensionPreferences
 
 declare namespace Preferences {
-  /** Preferences accessible in the `send-link` command */
-  export type SendLink = ExtensionPreferences & {}
-  /** Preferences accessible in the `pick-link` command */
-  export type PickLink = ExtensionPreferences & {}
-  /** Preferences accessible in the `send-to-contact` command */
-  export type SendToContact = ExtensionPreferences & {}
-  /** Preferences accessible in the `auth` command */
-  export type Auth = ExtensionPreferences & {}
-  /** Preferences accessible in the `daemon-status` command */
-  export type DaemonStatus = ExtensionPreferences & {}
+  /** Preferences accessible in the `send-to-self` command */
+  export type SendToSelf = ExtensionPreferences & {}
+  /** Preferences accessible in the `send-to-chat` command */
+  export type SendToChat = ExtensionPreferences & {}
+  /** Preferences accessible in the `pick-item` command */
+  export type PickItem = ExtensionPreferences & {}
+  /** Preferences accessible in the `link` command */
+  export type Link = ExtensionPreferences & {}
+  /** Preferences accessible in the `status` command */
+  export type Status = ExtensionPreferences & {}
 }
 
 declare namespace Arguments {
-  /** Arguments passed to the `send-link` command */
-  export type SendLink = {}
-  /** Arguments passed to the `pick-link` command */
-  export type PickLink = {}
-  /** Arguments passed to the `send-to-contact` command */
-  export type SendToContact = {}
-  /** Arguments passed to the `auth` command */
-  export type Auth = {}
-  /** Arguments passed to the `daemon-status` command */
-  export type DaemonStatus = {}
+  /** Arguments passed to the `send-to-self` command */
+  export type SendToSelf = {}
+  /** Arguments passed to the `send-to-chat` command */
+  export type SendToChat = {}
+  /** Arguments passed to the `pick-item` command */
+  export type PickItem = {}
+  /** Arguments passed to the `link` command */
+  export type Link = {}
+  /** Arguments passed to the `status` command */
+  export type Status = {}
 }
 
