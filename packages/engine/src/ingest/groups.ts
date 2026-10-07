@@ -99,8 +99,4 @@ export class GroupCache {
     if (changed) this.groups.delete(changed.id);
     for (const id of batch["chats.delete"] ?? []) this.groups.delete(id);
   }
-
-  clear(): void {
-    this.groups.clear();
-  }
 }

@@ -12,14 +12,6 @@ export class IdentityRepo {
     );
   }
 
-  lidForPn(pn: string): string | null {
-    return (
-      this.db
-        .query<{ lid: string }, { pn: string }>("SELECT lid FROM lid_map WHERE pn = $pn LIMIT 1")
-        .get({ pn })?.lid ?? null
-    );
-  }
-
   /** Returns false when the mapping was already known. */
   setMapping(lid: string, pn: string): boolean {
     return (
@@ -40,15 +32,6 @@ export class IdentityRepo {
         )
         .get({ alias })?.chat_jid ?? null
     );
-  }
-
-  aliasesOf(chat: string): string[] {
-    return this.db
-      .query<{ alias_jid: string }, { chat: string }>(
-        "SELECT alias_jid FROM chat_aliases WHERE chat_jid = $chat ORDER BY alias_jid",
-      )
-      .all({ chat })
-      .map((row) => row.alias_jid);
   }
 
   setAlias(alias: string, chat: string): void {

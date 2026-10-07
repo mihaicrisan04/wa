@@ -215,16 +215,6 @@ export class MessagesRepo {
       .all({ now });
   }
 
-  latestTimestamp(chatJid: string): number | null {
-    return (
-      this.db
-        .query<{ ts: number | null }, { chatJid: string }>(
-          "SELECT max(ts) AS ts FROM messages WHERE chat_jid = $chatJid",
-        )
-        .get({ chatJid })?.ts ?? null
-    );
-  }
-
   /** Rows in rowid order, a page at a time, for reindexing. */
   page(afterRowid: number, limit: number): MessageRow[] {
     return this.db
