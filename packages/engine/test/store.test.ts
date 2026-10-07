@@ -250,6 +250,22 @@ describe("chats", () => {
   });
 });
 
+describe("profiles", () => {
+  const spec = { name: "agent", capabilities: [], allChats: false, collections: ["missing"] };
+
+  test("a profile naming a missing collection is not created at all", () => {
+    expect(() => store.profiles.create(spec)).toThrow();
+    expect(store.profiles.get("agent")).toBeNull();
+  });
+
+  test("putting a missing collection leaves the existing profile as it was", () => {
+    store.collections.create("master", null);
+    store.profiles.put({ ...spec, collections: ["master"] });
+    expect(() => store.profiles.put({ ...spec, allChats: true })).toThrow();
+    expect(store.profiles.get("agent")).toMatchObject({ allChats: false, collections: ["master"] });
+  });
+});
+
 describe("disappearing messages", () => {
   test("are purged with their media once expired", () => {
     const now = nowSeconds();
