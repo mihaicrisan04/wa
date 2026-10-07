@@ -52,6 +52,10 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   };
 }
 
+export function databasePath(home: string): string {
+  return join(home, "wa.db");
+}
+
 /** Every file the engine creates is 0600 and every directory 0700. */
 export function restrictFileModes(): void {
   process.umask(0o077);
