@@ -207,7 +207,9 @@ describe("disappearing media", () => {
   const expire = () =>
     h.store.db.query("UPDATE messages SET expires_at = 1 WHERE id = $id").run({ id: key.id });
 
-  async function cacheWith(download: () => Promise<Readable>) {
+  async function cacheWith(
+    download: (message: WAMessage, _type: unknown, _options: unknown) => Promise<Readable>,
+  ) {
     const { imageMessage } = content.image();
     const image = buildMessage({
       chat: ANA_PN,
@@ -221,7 +223,7 @@ describe("disappearing media", () => {
       home: temp.home,
       logger: silent,
       client: () => h.client,
-      download: download as unknown as typeof downloadMediaMessage,
+      download: download as typeof downloadMediaMessage,
     });
   }
 
