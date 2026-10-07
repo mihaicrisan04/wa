@@ -14,14 +14,14 @@ import {
   type MessageAction,
   type Normalized,
 } from "../whatsapp/normalize";
-import { applyAction, isAuthorized } from "./actions";
+import { applyAction, isAuthorized, withStoredEdit } from "./actions";
 import { isolated, type IngestContext } from "./context";
 
 /** Edits and revokes a batch announced through carrier messages. */
 export interface Carriers {
   actions: MessageAction[];
-  /** Carrier ids of revokes, keyed like `refKey`. */
-  revokeIds: Set<string>;
+  /** Revokes by their carrier, keyed like `refKey`. */
+  revokes: Map<string, MessageAction>;
 }
 
 export function normalizeMessages(
@@ -47,14 +47,14 @@ export function carriersOf(...lists: Normalized[][]): Carriers {
   const actions = lists.flatMap((items) =>
     items.flatMap((item) => (item.kind === "carrier" && item.action ? [item.action] : [])),
   );
-  const revokeIds = new Set(
+  const revokes = new Map(
     actions.flatMap((action) =>
       action.type === "revoke" && action.carrierId
-        ? [refKey(action.chatJid, action.carrierId)]
+        ? [[refKey(action.chatJid, action.carrierId), action] as const]
         : [],
     ),
   );
-  return { actions, revokeIds };
+  return { actions, revokes };
 }
 
 /** Stores the storable messages; carriers are never stored as rows. */
@@ -62,11 +62,8 @@ export function storeMessages(ctx: IngestContext, items: Normalized[], carriers:
   for (const item of items) {
     if (item.kind !== "message") continue;
     const { record, pushName, foldedEdit } = item;
-    // a folded revoke overwrites its target's key with the carrier's, leaving nothing to keep
-    if (record.deletedAt !== null && carriers.revokeIds.has(refKey(record.chatJid, record.id)))
-      continue;
     isolated(ctx, { id: record.id }, () => {
-      writeMessage(ctx, foldedEdit ? checkFoldedEdit(ctx, record, carriers) : record, pushName);
+      writeMessage(ctx, checkFolded(ctx, record, foldedEdit, carriers), pushName);
     });
   }
 }
@@ -78,8 +75,10 @@ export function applyActions(ctx: IngestContext, actions: MessageAction[]): void
 
 export function ingestMessageUpdates(ctx: IngestContext, updates: WAMessageUpdate[]): void {
   for (const update of updates) {
-    const action = actionFromUpdate(update, ctx.identity);
-    if (action) isolated(ctx, { id: action.targetId }, () => applyAction(ctx, action));
+    isolated(ctx, { id: update.key.id }, () => {
+      const action = actionFromUpdate(update, ctx.identity);
+      if (action) applyAction(ctx, action);
+    });
   }
 }
 
@@ -94,11 +93,44 @@ export function deleteMessages(ctx: IngestContext, data: BaileysEventMap["messag
   }
   for (const key of data.keys) {
     if (!key.remoteJid || !key.id) continue;
-    const ref = { chatJid: chatOf(key, identity), id: key.id };
-    const file = store.media.remove(ref);
-    if (file) ctx.orphanedFiles.push(file);
-    store.messages.delete(ref);
+    const id = key.id;
+    isolated(ctx, { id }, () => {
+      const ref = { chatJid: chatOf(key, identity), id };
+      const file = store.media.remove(ref);
+      if (file) ctx.orphanedFiles.push(file);
+      store.messages.delete(ref);
+    });
   }
+}
+
+/** What a message becomes once the edit or revoke Baileys folded into it is checked. */
+function checkFolded(
+  ctx: IngestContext,
+  record: MessageRecord,
+  foldedEdit: boolean,
+  carriers: Carriers,
+): MessageRecord {
+  const revoke =
+    record.deletedAt !== null ? carriers.revokes.get(refKey(record.chatJid, record.id)) : null;
+  if (revoke) return revokedTarget(record, revoke);
+  return foldedEdit ? checkFoldedEdit(ctx, record, carriers) : record;
+}
+
+/**
+ * Baileys folds a revoke into its buffered target by overwriting the target's key with the
+ * carrier's, so the sender cannot be checked: keep only a placeholder a later copy can fill.
+ */
+function revokedTarget(folded: MessageRecord, carrier: MessageAction): MessageRecord {
+  return {
+    ...placeholder(folded),
+    chatJid: carrier.chatJid,
+    id: carrier.targetId,
+    fromMe: false,
+    senderJid: null,
+    senderAlt: null,
+    deletedAt: null,
+    raw: null,
+  };
 }
 
 /**
@@ -122,10 +154,11 @@ function checkFoldedEdit(
   return placeholder({ ...record, raw: null });
 }
 
-function writeMessage(ctx: IngestContext, record: MessageRecord, pushName: string | null): void {
+function writeMessage(ctx: IngestContext, incoming: MessageRecord, pushName: string | null): void {
   const { store, identity } = ctx;
-  store.chats.ensure(record.chatJid, identity.kindOf(record.chatJid));
-  if (!store.messages.upsert(record)) return;
+  store.chats.ensure(incoming.chatJid, identity.kindOf(incoming.chatJid));
+  const record = upsertMessage(ctx, incoming);
+  if (!record) return;
 
   const ref = { chatJid: record.chatJid, id: record.id };
   if (record.media && record.deletedAt === null) store.media.upsert(ref, record.media);
@@ -139,6 +172,13 @@ function writeMessage(ctx: IngestContext, record: MessageRecord, pushName: strin
   if (pushName && !record.fromMe && sender && (isPnUser(sender) || isLidUser(sender))) {
     store.contacts.upsert(sender, { pushName });
   }
+}
+
+/** Returns what was written, or null when the stored row wins. */
+function upsertMessage(ctx: IngestContext, record: MessageRecord): MessageRecord | null {
+  if (ctx.store.messages.upsert(record)) return record;
+  const edited = withStoredEdit(ctx, record);
+  return edited && ctx.store.messages.upsert(edited) ? edited : null;
 }
 
 function refKey(chatJid: string, id: string): string {

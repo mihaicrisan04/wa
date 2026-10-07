@@ -1,12 +1,12 @@
 import {
   extractMessageContent,
   normalizeMessageContent,
-  proto,
+  type proto,
   type WAMessage,
 } from "@whiskeysockets/baileys";
-import { PLACEHOLDER_TYPE, type MessageRow } from "../store";
-import { applyEditedText, textOf } from "../whatsapp/content";
-import type { MessageAction } from "../whatsapp/normalize";
+import { PLACEHOLDER_TYPE, type MessageRecord, type MessageRow } from "../store";
+import { applyEditedText, contentTypeOf, textOf, typeName } from "../whatsapp/content";
+import { revokedMessage, type MessageAction } from "../whatsapp/normalize";
 import { parseRaw, serializeRaw } from "../whatsapp/raw";
 import type { IngestContext } from "./context";
 
@@ -16,10 +16,13 @@ interface Target {
   senderJid: string | null;
 }
 
-/** Applies an edit or revoke to a stored message, if whoever sent it may do so. */
+/**
+ * Applies an edit or revoke to a stored message, if whoever sent it may do so. Placeholders
+ * count too, so a copy decrypted later cannot bring back what was edited or revoked.
+ */
 export function applyAction(ctx: IngestContext, action: MessageAction): void {
   const row = ctx.store.messages.get(action.chatJid, action.targetId);
-  if (!row || row.deleted_at !== null || row.type === PLACEHOLDER_TYPE) return;
+  if (!row || row.deleted_at !== null) return;
   const target = { chatJid: row.chat_jid, fromMe: row.from_me === 1, senderJid: row.sender_jid };
   if (!isAuthorized(ctx, action, target)) {
     ctx.logger.warn(
@@ -46,6 +49,23 @@ export function isAuthorized(ctx: IngestContext, action: MessageAction, target: 
   return role === "admin" || role === "superadmin";
 }
 
+/**
+ * An incoming copy that loses to a stored edit Baileys folded in (or one applied before the
+ * original decrypted) takes that edit on, so the original's media and quote are kept.
+ */
+export function withStoredEdit(ctx: IngestContext, record: MessageRecord): MessageRecord | null {
+  if (!record.raw || record.type === PLACEHOLDER_TYPE) return null;
+  const stored = ctx.store.messages.get(record.chatJid, record.id);
+  if (!stored?.raw || stored.deleted_at !== null || stored.edited_at === null) return null;
+  const edit = normalizeMessageContent(parseRaw(stored.raw).message?.editedMessage?.message);
+  const message = parseRaw(record.raw);
+  const original = normalizeMessageContent(message.message);
+  if (!edit || !original) return null;
+  applyEditedText(original, edit);
+  const { text, caption } = textOf(extractMessageContent(message.message));
+  return { ...record, text, caption, editedAt: stored.edited_at, raw: serializeRaw(message) };
+}
+
 function applyEdit(
   ctx: IngestContext,
   row: MessageRow,
@@ -54,35 +74,39 @@ function applyEdit(
   if (row.edited_at !== null && row.edited_at >= action.ts) return;
   const edited = normalizeMessageContent(action.content);
   if (!edited) return;
-  let raw = row.raw;
-  let content: proto.IMessage | undefined = extractMessageContent(edited);
-  if (row.raw) {
-    const message = parseRaw(row.raw);
-    const original = normalizeMessageContent(message.message);
-    if (original) applyEditedText(original, edited);
-    raw = serializeRaw(message);
-    content = extractMessageContent(message.message);
-  }
+  const message = row.raw ? parseRaw(row.raw) : null;
+  if (message) foldEdit(message, edited);
+  const content = extractMessageContent(message?.message ?? edited);
+  const type = contentTypeOf(content);
+  if (!type) return;
   const { text, caption } = textOf(content);
   ctx.store.messages.applyEdit(
     { chatJid: row.chat_jid, id: row.id },
-    { text, caption, editedAt: action.ts, raw },
+    {
+      type: row.type === PLACEHOLDER_TYPE ? typeName(type) : row.type,
+      text,
+      caption,
+      editedAt: action.ts,
+      raw: message ? serializeRaw(message) : null,
+    },
   );
+}
+
+/** Edits a stored message in place; one not decrypted yet holds just the edit, as Baileys folds it. */
+function foldEdit(message: WAMessage, edited: proto.IMessage): void {
+  const original = normalizeMessageContent(message.message);
+  if (original) {
+    applyEditedText(original, edited);
+    return;
+  }
+  message.message = { editedMessage: { message: edited } };
+  message.messageStubType = null;
 }
 
 function applyRevoke(ctx: IngestContext, row: MessageRow, deletedAt: number): void {
   const key = { chatJid: row.chat_jid, id: row.id };
-  ctx.store.messages.tombstone(key, deletedAt, row.raw ? tombstoneRaw(parseRaw(row.raw)) : null);
+  const raw = row.raw ? serializeRaw(revokedMessage(parseRaw(row.raw))) : null;
+  ctx.store.messages.tombstone(key, deletedAt, raw);
   const file = ctx.store.media.remove(key);
   if (file) ctx.orphanedFiles.push(file);
-}
-
-/** What a revoked message looks like in history: its key and time, no content. */
-function tombstoneRaw(original: WAMessage): string {
-  return serializeRaw({
-    key: original.key,
-    messageTimestamp: original.messageTimestamp,
-    messageStubType: proto.WebMessageInfo.StubType.REVOKE,
-    message: null,
-  });
 }

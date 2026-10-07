@@ -169,11 +169,18 @@ export class MessagesRepo {
 
   applyEdit(
     key: MessageKeyRef,
-    edit: { text: string | null; caption: string | null; editedAt: number; raw: string | null },
+    edit: {
+      type: string;
+      text: string | null;
+      caption: string | null;
+      editedAt: number;
+      raw: string | null;
+    },
   ): void {
     this.db
       .query(
-        `UPDATE messages SET text = $text, caption = $caption, edited_at = $editedAt, raw = $raw
+        `UPDATE messages
+         SET type = $type, text = $text, caption = $caption, edited_at = $editedAt, raw = $raw
          WHERE chat_jid = $chatJid AND id = $id AND deleted_at IS NULL`,
       )
       .run({ ...key, ...edit });
@@ -190,9 +197,12 @@ export class MessagesRepo {
       .run({ ...key, deletedAt, raw });
   }
 
+  /** A tombstone keeps its content-free raw. */
   updateRaw(key: MessageKeyRef, raw: string): void {
     this.db
-      .query("UPDATE messages SET raw = $raw WHERE chat_jid = $chatJid AND id = $id")
+      .query(
+        "UPDATE messages SET raw = $raw WHERE chat_jid = $chatJid AND id = $id AND deleted_at IS NULL",
+      )
       .run({ ...key, raw });
   }
 

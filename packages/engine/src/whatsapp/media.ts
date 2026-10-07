@@ -90,7 +90,10 @@ export class MediaCache {
       throw err;
     }
     const { size } = await stat(path);
-    store.media.markDownloaded(key, path, size);
+    if (!store.media.markDownloaded(key, path, size)) {
+      await rm(path, { force: true });
+      throw new MediaUnavailableError("not_found");
+    }
     return describe(media, path, size);
   }
 

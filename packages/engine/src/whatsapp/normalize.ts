@@ -125,21 +125,30 @@ export function actionFromUpdate(
   resolve: JidResolver,
 ): MessageAction | null {
   if (!key.remoteJid || !key.id || isJidStatusBroadcast(key.remoteJid)) return null;
+  const edited = update.message?.editedMessage?.message;
+  const revoked = update.messageStubType === StubType.REVOKE && update.message === null;
+  if (!edited && !revoked) return null;
   const base = {
     chatJid: chatOf(key, resolve),
     targetId: key.id,
     actor: actorOf(key, resolve),
     carrierId: null,
   };
-  const edited = update.message?.editedMessage?.message;
   if (edited) {
     const ts = toNumber(update.messageTimestamp) || nowSeconds();
     return { ...base, type: "edit", content: edited, ts };
   }
-  if (update.messageStubType === StubType.REVOKE && update.message === null) {
-    return { ...base, type: "revoke", ts: nowSeconds() };
-  }
-  return null;
+  return { ...base, type: "revoke", ts: nowSeconds() };
+}
+
+/** What a revoked message looks like in history: its key and time, no content. */
+export function revokedMessage(original: WAMessage): WAMessage {
+  return {
+    key: original.key,
+    messageTimestamp: original.messageTimestamp,
+    messageStubType: StubType.REVOKE,
+    message: null,
+  };
 }
 
 /** Keeps the key and time of a message but none of its content, so a later copy replaces it. */

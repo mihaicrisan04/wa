@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { readFile, rm, stat } from "node:fs/promises";
+import { readdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { encryptedStream } from "@whiskeysockets/baileys";
+import { Readable } from "node:stream";
+import {
+  encryptedStream,
+  type downloadMediaMessage,
+  type WAMessage,
+} from "@whiskeysockets/baileys";
 import { buildMessage, content, keyOf, makeTempHome, type TempHome } from "../src/testing";
 import { MediaCache, MediaUnavailableError } from "../src/whatsapp/media";
 import { parseRaw } from "../src/whatsapp/raw";
@@ -159,6 +164,40 @@ describe("downloads", () => {
     }
     await h.emit({ "messages.delete": { keys: [keyOf(message)] } });
     expect(await stat(path).catch(() => null)).toBeNull();
+  });
+});
+
+describe("a message revoked while its download is in flight", () => {
+  test("keeps no file and no content in raw", async () => {
+    const image = buildMessage({ chat: ANA_PN, id: "3EB0RACE", message: content.image() });
+    await h.emit({ "messages.upsert": { messages: [image], type: "notify" } });
+    const gate = Promise.withResolvers<void>();
+    const racing = new MediaCache({
+      store: h.store,
+      home: temp.home,
+      logger: silent,
+      client: () => h.client,
+      download: (async (message: WAMessage, _type: unknown, _options: unknown, ctx) => {
+        await gate.promise;
+        await ctx!.reuploadRequest(message);
+        return Readable.from([Buffer.from("jpeg bytes")]);
+      }) as typeof downloadMediaMessage,
+    });
+
+    const download = racing.get({ chatJid: ANA_PN, id: "3EB0RACE" }).catch((err: unknown) => err);
+    await h.emit({
+      "messages.upsert": {
+        messages: [buildMessage({ chat: ANA_PN, message: content.revoke(keyOf(image)) })],
+        type: "notify",
+      },
+    });
+    gate.resolve();
+
+    expect(((await download) as MediaUnavailableError).reason).toBe("not_found");
+    expect(await readdir(racing.dir)).toEqual([]);
+    const row = h.store.messages.get(ANA_PN, "3EB0RACE")!;
+    expect(row.type).toBe("revoked");
+    expect(row.raw).not.toContain("imageMessage");
   });
 });
 

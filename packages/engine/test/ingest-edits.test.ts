@@ -6,7 +6,6 @@ import {
   BOB_PN,
   EVE_PN,
   GROUP,
-  count,
   harness,
   messageRows,
   type Harness,
@@ -198,6 +197,15 @@ describe("edits", () => {
 });
 
 describe("revokes", () => {
+  /** The target's key is lost when Baileys folds a revoke, so neither sender nor content is kept. */
+  const foldedPlaceholder = expect.objectContaining({
+    id: "3EB0GONE",
+    type: "placeholder",
+    caption: null,
+    sender_jid: null,
+    deleted_at: null,
+  });
+
   const target = () =>
     buildMessage({
       chat: GROUP,
@@ -271,7 +279,7 @@ describe("revokes", () => {
     });
   });
 
-  test("a revoke Baileys folded into a buffered message leaves no content and no phantom row", async () => {
+  test("a revoke Baileys folded into a buffered message leaves only a placeholder", async () => {
     await h.buffered((client) => {
       const message = target();
       const carrier = buildMessage({
@@ -292,11 +300,11 @@ describe("revokes", () => {
         },
       ]);
     });
-    expect(count(h.store, "SELECT * FROM messages")).toBe(0);
+    expect(messageRows(h.store, GROUP)).toEqual([foldedPlaceholder]);
     expect(h.store.search("secret")).toEqual([]);
   });
 
-  test("a revoke Baileys folded into a buffered history message leaves no phantom row", async () => {
+  test("a revoke Baileys folded into a buffered history message leaves only a placeholder", async () => {
     await h.buffered((client) => {
       const message = target();
       const carrier = buildMessage({
@@ -317,7 +325,7 @@ describe("revokes", () => {
         },
       ]);
     });
-    expect(count(h.store, "SELECT * FROM messages")).toBe(0);
+    expect(messageRows(h.store, GROUP)).toEqual([foldedPlaceholder]);
     expect(h.store.search("secret")).toEqual([]);
   });
 

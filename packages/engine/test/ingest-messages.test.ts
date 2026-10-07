@@ -220,4 +220,33 @@ describe("robustness", () => {
     expect(messageRows(h.store, ANA_PN).map((row) => row.id)).toEqual(["3EB0OK"]);
     expect(h.store.search("half")).toEqual([]);
   });
+
+  test("an unresolvable broadcast key in a delete or update is skipped alone", async () => {
+    const broadcast = { remoteJid: "1234567@broadcast", id: "3EB0BCAST", fromMe: false };
+    await h.emit({
+      "messages.upsert": {
+        messages: [
+          buildMessage({ chat: ANA_PN, id: "3EB0KEEP", message: content.text("keep me") }),
+        ],
+        type: "notify",
+      },
+      "messages.update": [{ key: broadcast, update: { starred: true } }],
+      "messages.delete": { keys: [broadcast] },
+    });
+    expect(messageRows(h.store, ANA_PN).map((row) => row.id)).toEqual(["3EB0KEEP"]);
+
+    await h.emit({
+      "messages.upsert": {
+        messages: [buildMessage({ chat: ANA_PN, id: "3EB0ALSO", message: content.text("also") })],
+        type: "notify",
+      },
+      "messages.update": [
+        {
+          key: broadcast,
+          update: { message: null, messageStubType: proto.WebMessageInfo.StubType.REVOKE },
+        },
+      ],
+    });
+    expect(messageRows(h.store, ANA_PN).map((row) => row.id)).toEqual(["3EB0KEEP", "3EB0ALSO"]);
+  });
 });

@@ -80,6 +80,31 @@ test("re-derives every row from raw, keeping edits and tombstones", async () => 
   expect(h.store.search("junk")).toEqual([]);
 });
 
+test("a tombstone stays content-free even if its raw still holds the content", async () => {
+  const message = buildMessage({
+    chat: ANA_PN,
+    id: "3EB0GONE",
+    message: content.image({ caption: "private caption" }),
+  });
+  await h.emit({ "messages.upsert": { messages: [message], type: "notify" } });
+  const contentRaw = h.store.messages.get(ANA_PN, "3EB0GONE")!.raw;
+  await h.emit({
+    "messages.upsert": {
+      messages: [buildMessage({ chat: ANA_PN, message: content.revoke(keyOf(message)) })],
+      type: "notify",
+    },
+  });
+  h.store.db.query("UPDATE messages SET raw = $raw WHERE id = '3EB0GONE'").run({ raw: contentRaw });
+
+  reindex(h.store, { pn: ME_PN, lid: ME_LID }, silent);
+
+  const row = h.store.messages.get(ANA_PN, "3EB0GONE")!;
+  expect(row).toMatchObject({ type: "revoked", caption: null, has_media: 0 });
+  expect(row.deleted_at).toBeGreaterThan(0);
+  expect(row.raw).not.toContain("private caption");
+  expect(h.store.media.get({ chatJid: ANA_PN, id: "3EB0GONE" })).toBeNull();
+});
+
 let temp: TempHome;
 
 test("reindexHome works on the database file and skips a missing one", async () => {

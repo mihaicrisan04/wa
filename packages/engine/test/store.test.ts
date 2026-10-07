@@ -117,14 +117,19 @@ describe("message upserts", () => {
     store.messages.upsert(record());
     store.messages.tombstone({ chatJid: ANA_PN, id: "3EB0A" }, 1_700_000_100, null);
     expect(store.messages.upsert(record({ text: "old copy" }))).toBe(false);
-    expect(store.messages.get(ANA_PN, "3EB0A")).toMatchObject({ type: "revoked", text: null });
+    store.messages.updateRaw({ chatJid: ANA_PN, id: "3EB0A" }, '{"message":{}}');
+    expect(store.messages.get(ANA_PN, "3EB0A")).toMatchObject({
+      type: "revoked",
+      text: null,
+      raw: null,
+    });
   });
 
   test("an older copy never reverts an edit", () => {
     store.messages.upsert(record());
     store.messages.applyEdit(
       { chatJid: ANA_PN, id: "3EB0A" },
-      { text: "edited", caption: null, editedAt: 1_700_000_200, raw: "{}" },
+      { type: "text", text: "edited", caption: null, editedAt: 1_700_000_200, raw: "{}" },
     );
     expect(store.messages.upsert(record({ text: "hello" }))).toBe(false);
     expect(textOf()).toBe("edited");

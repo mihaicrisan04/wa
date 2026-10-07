@@ -36,13 +36,18 @@ export class MediaRepo {
       .get(key);
   }
 
-  markDownloaded(key: MessageKeyRef, localPath: string, size: number): void {
-    this.db
+  /** False when the message was deleted, revoked or moved meanwhile: the file is not kept. */
+  markDownloaded(key: MessageKeyRef, localPath: string, size: number): boolean {
+    const { changes } = this.db
       .query(
         `UPDATE media SET local_path = $localPath, size = $size, downloaded_at = $now
-         WHERE chat_jid = $chatJid AND message_id = $id`,
+         WHERE chat_jid = $chatJid AND message_id = $id AND EXISTS (
+           SELECT 1 FROM messages
+           WHERE chat_jid = media.chat_jid AND id = media.message_id AND deleted_at IS NULL
+         )`,
       )
       .run({ ...key, localPath, size, now: nowSeconds() });
+    return changes > 0;
   }
 
   /** Deletes the row and returns the cached file to remove, if any. */

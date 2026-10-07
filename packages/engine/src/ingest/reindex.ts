@@ -1,7 +1,7 @@
 import type { Logger } from "../logger";
-import type { Store } from "../store";
+import type { MessageRow, Store } from "../store";
 import type { OwnIdentity } from "../whatsapp/connection";
-import { normalizeMessage } from "../whatsapp/normalize";
+import { normalizeMessage, revokedMessage } from "../whatsapp/normalize";
 import { parseRaw } from "../whatsapp/raw";
 import { Identity } from "./lid";
 
@@ -29,7 +29,7 @@ export function reindex(store: Store, me: OwnIdentity | null, logger: Logger): R
       const page = store.messages.page(after, PAGE_SIZE);
       for (const row of page) {
         after = row.rowid;
-        const normalized = row.raw ? safeNormalize(row.raw, row.source, identity, logger) : null;
+        const normalized = safeNormalize(row, identity, logger);
         if (normalized?.kind !== "message") {
           result.skipped++;
           continue;
@@ -48,14 +48,17 @@ export function reindex(store: Store, me: OwnIdentity | null, logger: Logger): R
   return result;
 }
 
+/** A tombstone is re-read without content, whatever its raw still holds. */
 function safeNormalize(
-  raw: string,
-  source: "live" | "history",
+  row: MessageRow,
   identity: Identity,
   logger: Logger,
 ): ReturnType<typeof normalizeMessage> | null {
+  if (!row.raw) return null;
   try {
-    return normalizeMessage(parseRaw(raw), identity, source);
+    const message = parseRaw(row.raw);
+    const current = row.deleted_at === null ? message : revokedMessage(message);
+    return normalizeMessage(current, identity, row.source);
   } catch (err) {
     logger.warn({ err }, "could not re-read a stored message");
     return null;
