@@ -1,56 +1,45 @@
 import { basename } from "node:path";
-import { MAX_UPLOAD_BYTES, type OutboxEntry, type Recipient, type SendResult } from "@wa/sdk";
+import {
+  MAX_UPLOAD_BYTES,
+  UPLOAD_TOO_LARGE,
+  type OutboxEntry,
+  type Recipient,
+  type SendResult,
+} from "@wa/sdk";
 import { Hono } from "hono";
 import { z } from "zod";
-import { invalid, notFound, tooLarge } from "../../errors";
-import { auditActor, assertCan, type Principal } from "../../policy";
-import { inScope, listRecipients, sendTarget, type ReadContext } from "../../queries";
-import type { OutboxRow } from "../../store";
+import { invalid, tooLarge } from "../../errors";
+import { getOutboxEntry, listRecipients, recipientsQuery, requiredText } from "../../queries";
+import { MAX_TEXT, queueSend } from "../../send";
 import type { OutgoingMessage } from "../../whatsapp/outgoing";
+import { requires } from "../auth";
 import { readContext, type ApiDeps, type AppContext, type AppEnv } from "../context";
-import { jsonBody, limitParam, optionalText, requiredText } from "../params";
+import { jsonBody } from "../params";
 
-const MAX_TEXT = 65_536;
-
-const recipientsQuery = z.object({ q: optionalText, limit: limitParam(50, 500) });
 const textBody = z.object({ to: requiredText, text: z.string().min(1).max(MAX_TEXT) });
 const fileFields = z.object({
   to: requiredText,
   caption: z.string().max(MAX_TEXT).optional(),
 });
 
+const sender = requires("send", "send:self");
+
 export function sendRoutes(deps: ApiDeps) {
   return new Hono<AppEnv>()
-    .get("/recipients", (c) => {
-      assertCan(c.get("principal"), "send", "send:self");
+    .get("/recipients", sender, (c) => {
       const query = recipientsQuery.parse(c.req.query());
-      return c.json({ items: listRecipients(readContext(c, deps), query) satisfies Recipient[] });
+      const items = listRecipients(readContext(deps, c.get("principal")), query);
+      return c.json({ items: items satisfies Recipient[] });
     })
-    .post("/send", async (c) => {
-      const principal = c.get("principal");
-      assertCan(principal, "send", "send:self");
+    .post("/send", sender, async (c) => {
       const { to, message } = await readSendRequest(c);
-      const chatJid = sendTarget(readContext(c, deps), to);
-      const row = await deps.outbox.enqueue(chatJid, message, auditActor(principal).profile);
-      deps.store.audit.record({
-        ...auditActor(principal),
-        action: "send",
-        chatJid,
-        detail: { outboxId: row.id, kind: message.kind },
-      });
-      const result: SendResult = {
-        outboxId: row.id,
-        messageId: row.message_id,
-        status: row.status,
-      };
-      return c.json(result, 202);
+      const ctx = readContext(deps, c.get("principal"));
+      const { result } = await queueSend(deps.outbox, ctx, to, message);
+      return c.json(result satisfies SendResult, 202);
     })
-    .get("/outbox/:id", (c) => {
-      const principal = c.get("principal");
-      assertCan(principal, "send", "send:self");
-      const row = deps.store.outbox.get(c.req.param("id"));
-      if (!row || !mayRead(readContext(c, deps), principal, row)) throw notFound();
-      return c.json(toEntry(row) satisfies OutboxEntry);
+    .get("/outbox/:id", sender, (c) => {
+      const ctx = readContext(deps, c.get("principal"));
+      return c.json(getOutboxEntry(ctx, c.req.param("id")) satisfies OutboxEntry);
     });
 }
 
@@ -71,7 +60,7 @@ async function readSendRequest(c: AppContext): Promise<{ to: string; message: Ou
   const file = form.get("file");
   if (!(file instanceof File) || file.size === 0)
     throw invalid("file: an uploaded file is required");
-  if (file.size > MAX_UPLOAD_BYTES) throw tooLarge("WhatsApp only takes files up to 2 GB");
+  if (file.size > MAX_UPLOAD_BYTES) throw tooLarge(UPLOAD_TOO_LARGE);
   return {
     to: fields.to,
     message: {
@@ -89,24 +78,4 @@ function safeFileName(name: string): string {
   const printable = [...name.replaceAll("\\", "/")].filter((char) => char >= " ").join("");
   const base = basename(printable).slice(0, 255);
   return base && base !== "." && base !== ".." ? base : "file";
-}
-
-/** An entry is visible to the profile that queued it, while its chat is still in scope. */
-function mayRead(ctx: ReadContext, principal: Principal, row: OutboxRow): boolean {
-  if (principal.kind === "admin") return true;
-  if (row.profile !== principal.profile) return false;
-  return row.chat_jid === ctx.identity.me() || inScope(ctx, row.chat_jid);
-}
-
-function toEntry(row: OutboxRow): OutboxEntry {
-  return {
-    outboxId: row.id,
-    messageId: row.message_id,
-    chat: row.chat_jid,
-    status: row.status,
-    attempts: row.attempts,
-    error: row.error,
-    createdAt: row.created_at,
-    expiresAt: row.expires_at,
-  };
 }

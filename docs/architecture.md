@@ -43,6 +43,7 @@ A Bun workspace (Bun 1.4, isolated linker). Every package declares what it impor
 | `queries/`               | the scoped read model: every chat, message, search, media and recipient query filters by the principal's scope in SQL    |
 | `policy.ts`              | principals (admin or token → profile), capability checks, the scope SQL                                                  |
 | `outbox.ts`              | the persisted send queue                                                                                                 |
+| `send.ts`                | queueing a send from HTTP or MCP: the target check, the outbox entry and its audit record                                |
 | `backfill.ts`            | on-demand history requests for older messages of one chat                                                                |
 | `api/`                   | the Hono app: Host/Origin guard, bearer auth, one module per resource, admin routes only on the unix socket              |
 | `mcp/`                   | the `/mcp` endpoint, one file per tool, injection-safe rendering                                                         |

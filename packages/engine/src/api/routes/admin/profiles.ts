@@ -2,8 +2,8 @@ import { PROFILE_CAPABILITIES, type Profile } from "@wa/sdk";
 import { Hono } from "hono";
 import { z } from "zod";
 import { BUILTIN_PROFILES } from "../../../tokens";
-import { ApiError, invalid, notFound } from "../../../errors";
-import { ADMIN, auditActor } from "../../../policy";
+import { conflict, invalid, notFound } from "../../../errors";
+import { recordAudit } from "../../../policy";
 import type { ProfileRecord } from "../../../store";
 import type { ApiDeps, AppEnv } from "../../context";
 import { jsonBody, nameParam } from "../../params";
@@ -16,9 +16,6 @@ const createBody = z.object({
 });
 
 export function profileRoutes({ store }: ApiDeps) {
-  const audit = (action: string, profile: string) =>
-    store.audit.record({ ...auditActor(ADMIN), action, detail: { profile } });
-
   return new Hono<AppEnv>()
     .get("/profiles", (c) =>
       c.json({ items: store.profiles.list().map(toProfile) satisfies Profile[] }),
@@ -37,17 +34,17 @@ export function profileRoutes({ store }: ApiDeps) {
         allChats: body.allChats ?? false,
         collections,
       });
-      if (!created) throw new ApiError(409, "exists", `profile "${body.name}" already exists`);
-      audit("profile.create", body.name);
-      return c.json(toProfile(store.profiles.get(body.name)!), 201);
+      if (!created) throw conflict("exists", `profile "${body.name}" already exists`);
+      recordAudit(store, c.get("principal"), "profile.create", { detail: { profile: body.name } });
+      return c.json(toProfile(created), 201);
     })
     .delete("/profiles/:name", (c) => {
       const name = c.req.param("name");
       if (BUILTIN_PROFILES.has(name)) {
-        throw new ApiError(409, "builtin", `"${name}" is built in and can't be deleted`);
+        throw conflict("builtin", `"${name}" is built in and can't be deleted`);
       }
       if (!store.profiles.delete(name)) throw notFound("profile not found");
-      audit("profile.delete", name);
+      recordAudit(store, c.get("principal"), "profile.delete", { detail: { profile: name } });
       return c.json({ ok: true });
     });
 }

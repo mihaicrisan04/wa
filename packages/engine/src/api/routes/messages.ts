@@ -2,50 +2,43 @@ import type { MediaInfo, MessageContext, Page, SearchHit } from "@wa/sdk";
 import { Hono } from "hono";
 import { z } from "zod";
 import { mediaUnavailable } from "../../errors";
-import { assertCan } from "../../policy";
-import { findMedia, getMessage, searchVisible, toMediaInfo } from "../../queries";
+import {
+  contextParam,
+  findMedia,
+  getMessage,
+  resolveChat,
+  searchMessages,
+  searchQuery,
+  toMediaInfo,
+} from "../../queries";
 import type { CachedMedia } from "../../whatsapp/media";
+import { requires } from "../auth";
 import { readContext, type ApiDeps, type AppEnv } from "../context";
-import { flag, limitParam, optionalText, requiredText } from "../params";
+import { flag } from "../params";
 
-const searchQuery = z.object({
-  q: requiredText,
-  chat: optionalText,
-  sender: optionalText,
-  after: optionalText,
-  before: optionalText,
-  type: optionalText,
-  limit: limitParam(50, 200),
-  cursor: optionalText,
-});
-
-const contextQuery = z.object({ context: z.coerce.number().int().min(0).max(50).default(0) });
+const contextQuery = z.object({ context: contextParam });
+const mediaQuery = z.object({ download: flag });
 
 export function messageRoutes(deps: ApiDeps) {
   return new Hono<AppEnv>()
-    .get("/search", (c) => {
-      assertCan(c.get("principal"), "messages:read");
+    .get("/search", requires("messages:read"), (c) => {
       const query = searchQuery.parse(c.req.query());
-      return c.json(searchVisible(readContext(c, deps), query) satisfies Page<SearchHit>);
+      const ctx = readContext(deps, c.get("principal"));
+      return c.json(searchMessages(ctx, query) satisfies Page<SearchHit>);
     })
-    .get("/messages/:chat/:id", (c) => {
-      assertCan(c.get("principal"), "messages:read");
+    .get("/messages/:chat/:id", requires("messages:read"), (c) => {
       const { context } = contextQuery.parse(c.req.query());
-      const found = getMessage(
-        readContext(c, deps),
-        c.req.param("chat"),
-        c.req.param("id"),
-        context,
-      );
-      return c.json(found satisfies MessageContext);
+      const ctx = readContext(deps, c.get("principal"));
+      const chat = resolveChat(ctx, c.req.param("chat"));
+      return c.json(getMessage(ctx, chat, c.req.param("id"), context) satisfies MessageContext);
     })
-    .get("/media/:chat/:id", async (c) => {
-      assertCan(c.get("principal"), "media:read");
-      const row = findMedia(readContext(c, deps), c.req.param("chat"), c.req.param("id"));
-      const { download } = z.object({ download: flag }).parse(c.req.query());
+    .get("/media/:chat/:id", requires("media:read"), async (c) => {
+      const ctx = readContext(deps, c.get("principal"));
+      const row = findMedia(ctx, resolveChat(ctx, c.req.param("chat")), c.req.param("id"));
+      const { download } = mediaQuery.parse(c.req.query());
       if (!download) return c.json(toMediaInfo(row) satisfies MediaInfo);
 
-      deps.noTimeout?.(c.req.raw);
+      deps.noTimeout(c.req.raw);
       const media = await deps.media
         .get({ chatJid: row.chat_jid, id: row.message_id })
         .catch(mediaUnavailable);

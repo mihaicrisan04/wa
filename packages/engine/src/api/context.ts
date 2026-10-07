@@ -18,21 +18,20 @@ export interface ApiDeps {
   media: MediaCache;
   outbox: Outbox;
   backfills: Backfills;
-  /** Where MCP `download_media` exports files; `$TMPDIR/wa-export` by default. */
-  exportDir?: string;
+  /** Where MCP `download_media` exports files. */
+  exportDir: string;
   /** Lifts the server's idle timeout for a long response (media downloads). */
-  noTimeout?: (request: Request) => void;
+  noTimeout: (request: Request) => void;
 }
 
 export type AppEnv = { Variables: { principal: Principal } };
 
 export type AppContext = Context<AppEnv>;
 
-/** The scoped read context of the request: built per request, so nothing is cached. */
-export function readContext(c: AppContext, deps: ApiDeps): ReadContext {
-  return {
-    store: deps.store,
-    principal: c.get("principal"),
-    identity: new Identity(deps.store, deps.connection.me()),
-  };
+/** A scoped read context: built per request or tool call, so nothing is cached. */
+export function readContext(
+  { store, connection }: Pick<ApiDeps, "store" | "connection">,
+  principal: Principal,
+): ReadContext {
+  return { store, principal, identity: new Identity(store, connection.me()) };
 }
