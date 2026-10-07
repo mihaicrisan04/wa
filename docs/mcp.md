@@ -6,14 +6,7 @@ Each connection authenticates with a bearer token bound to a **profile**. The pr
 
 ## Quick start
 
-```sh
-wa collections create master
-wa collections add master "Master PP" "Lab Project"
-wa profiles create master --caps chats:read,messages:read,media:read --collections master
-wa mcp install --profile master --project ~/dev/master
-```
-
-Start a new Claude Code session in `~/dev/master` and ask it about the chats.
+Set up a profile and install it into a project as in the [README](../README.md#clients), then start a new Claude Code session in that project and ask it about the chats.
 
 ## Tools
 
@@ -36,14 +29,9 @@ Every tool returns readable text plus `structuredContent` with the same data in 
 
 ## Scope
 
-Scope is enforced in SQL inside the engine, for every tool, exactly like the HTTP API:
+Tools see exactly what the HTTP API shows the same token: a chat outside the scope doesn't exist, so asking for one by jid, number or name is `not_found`, never `forbidden`. [security.md](security.md#access-control) has the details, including replies that quote another chat. Collection membership, capabilities and revocation are read on every request, so `wa collections rm` or `wa tokens revoke` apply to the next tool call.
 
-- chats outside the profile's collections don't exist: asking for one by jid, number or name is `not_found`, never `forbidden`;
-- searches, counts and media only cover visible chats;
-- a reply that quotes a message from another chat ("reply privately") keeps the quoted text snapshot but drops the other chat's id and sender;
-- collection membership, capabilities and revocation are read on every request, so `wa collections rm` or `wa tokens revoke` apply to the next tool call.
-
-The scope is a guardrail for cooperative agents, not a sandbox: code running as your macOS user can read `WA_HOME` directly. `wa mcp install` adds a deny rule for that directory (below).
+The scope is a guardrail for cooperative agents, not a sandbox ([threat model](security.md#threat-model)); `wa mcp install` adds a deny rule for `WA_HOME` (below).
 
 ## Untrusted content
 

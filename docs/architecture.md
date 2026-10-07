@@ -27,7 +27,7 @@ A Bun workspace (Bun 1.4, isolated linker). Every package declares what it impor
 
 ## Engine
 
-`startEngine(config, { client? })` in `engine.ts` wires everything and returns `{ stop() }`. Tests pass a fake client instead of a Baileys socket.
+`startEngine(config, options)` in `engine.ts` wires everything and returns an `Engine`: the bound port, the admin socket path, the services (connection, store, ingest, media, outbox, backfills) and `stop()`. Tests pass a fake client instead of a Baileys socket.
 
 | module                   | responsibility                                                                                                           |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
@@ -41,12 +41,17 @@ A Bun workspace (Bun 1.4, isolated linker). Every package declares what it impor
 | `store/`                 | SQLite (WAL, migrations) with one repository per aggregate                                                               |
 | `ingest/`                | Baileys events → store, one transaction per event batch; history, messages, chats/contacts, groups, LID canonicalization |
 | `queries/`               | the scoped read model: every chat, message, search, media and recipient query filters by the principal's scope in SQL    |
-| `policy.ts`              | principals (admin or token → profile), capability checks, the scope SQL                                                  |
+| `policy.ts`              | principals (admin or token → profile), capability checks, the scope SQL, audit records                                   |
+| `errors.ts`              | errors that are safe to show the client, shared by HTTP and MCP (`ApiError`, `toClientError`)                            |
+| `tokens.ts`              | issuing tokens (stored as sha256), authenticating them, the built-in `raycast` profile and its 0600 token file           |
 | `outbox.ts`              | the persisted send queue                                                                                                 |
 | `send.ts`                | queueing a send from HTTP or MCP: the target check, the outbox entry and its audit record                                |
 | `backfill.ts`            | on-demand history requests for older messages of one chat                                                                |
 | `api/`                   | the Hono app: Host/Origin guard, bearer auth, one module per resource, admin routes only on the unix socket              |
 | `mcp/`                   | the `/mcp` endpoint, one file per tool, injection-safe rendering                                                         |
+| `maintenance.ts`         | `wa reindex` on the database of a stopped engine                                                                         |
+| `selftest.ts`            | the offline checks the compiled binary runs in `mise run selftest`                                                       |
+| `testing/`               | `@wa/engine/testing`: the fake client, synthetic fixtures, a temp `WA_HOME` and the `startApi` harness, for tests only   |
 
 ### Connection
 
@@ -67,7 +72,7 @@ WhatsApp addresses the same person either as `<n>@s.whatsapp.net` (phone number)
 
 - Messages are upserted on `(chat, id)`: a placeholder (undecryptable stub) is replaced when the content arrives; history timestamps (`Long`) go through `toNumber`.
 - Edits and revokes apply only when they come from the original sender (or, for revokes in groups, an admin). A revoke that arrives before its message can be checked waits for it, and the message is stored as a tombstone if the revoke was genuine. Reactions are not stored.
-- Delete-for-me and chat clears delete rows, search entries and cached media. Revokes keep a tombstone without content. Disappearing messages are purged after they expire. View-once media is never downloaded and stories (`status@broadcast`) are not ingested.
+- Delete-for-me and chat clears delete rows, search entries and cached media. Revokes keep a tombstone without content. Disappearing messages are purged after they expire. View-once media is never downloaded and its raw payload is not kept. Stories (`status@broadcast`) are not ingested.
 - Each message keeps its `raw` WebMessageInfo (thumbnails stripped). It never leaves the engine; `wa reindex` re-derives every row from it.
 
 ### History
@@ -95,7 +100,7 @@ The schema (`store/migrations/001-init.ts`) has chats (with aliases and the LID 
 
 ## Access
 
-A request is made by a **principal**: the admin (anything on the unix socket) or a token, which is bound to a **profile**. A profile has capabilities (`chats:read`, `messages:read`, `media:read`, `send:self`, `send`, `link`) and a chat scope: all chats, or a set of **collections**. The scope is applied in SQL by every read, so a chat outside it is indistinguishable from one that doesn't exist. The built-in `raycast` profile (all chats, every capability but admin) is recreated at every start. See [security.md](security.md).
+A request is made by a **principal**: the admin (anything on the unix socket) or a token, which is bound to a **profile**. A profile has capabilities (`chats:read`, `messages:read`, `media:read`, `send:self`, `send`, `link`) and a chat scope: all chats, or a set of **collections**. The built-in `raycast` profile (all chats, every capability but admin) is recreated at every start. How the scope is enforced is in [security.md](security.md#access-control).
 
 ## HTTP API
 
@@ -193,8 +198,8 @@ mise run dev:engine   # the engine from source with reload, WA_HOME=.wa-dev, por
 | `mise run build`                   | compile `dist/wa`                                                                       |
 | `mise run selftest`                | build `dist/wa` and run its offline selftest                                            |
 | `mise run build:raycast`           | build the extension into `apps/raycast/dist` (never installs it)                        |
-| `mise run dev:raycast`             | Raycast dev mode, which also loads the extension into Raycast                           |
+| `mise run dev:raycast`             | dev mode in the Raycast beta, which also loads the extension into it                    |
 
-Tests never reach WhatsApp. A fake `WhatsAppClient` emits Baileys-shaped event batches built with `proto.WebMessageInfo.fromObject`, each test gets a temporary `WA_HOME` and the server listens on port 0. The leak suites probe every HTTP route and MCP tool with out-of-scope chats.
+Tests never reach WhatsApp. A fake `WhatsAppClient` emits Baileys-shaped event batches built with `proto.WebMessageInfo.fromObject`. Tests that start an engine get a temporary `WA_HOME` and a server on port 0; store and ingest tests use in-memory SQLite. The leak suites probe every HTTP route and MCP tool with out-of-scope chats.
 
-Baileys is pinned to `7.0.0-rc14` exactly: release candidates compare as strings, and older ones carry a critical advisory.
+Baileys is pinned to `7.0.0-rc14` exactly: older release candidates carry a critical advisory ([GHSA-qvv5-jq5g-4cgg](https://github.com/advisories/GHSA-qvv5-jq5g-4cgg)), and a range wouldn't keep them out because release candidates compare as strings.

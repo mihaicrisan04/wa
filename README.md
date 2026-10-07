@@ -31,7 +31,7 @@ wa status
 
 **CLI.** `wa chats`, `wa read <chat>`, `wa search <query>` and the admin commands (`collections`, `profiles`, `tokens`, `audit`) talk to the engine over its unix socket. `wa --help` lists everything.
 
-**Raycast.** `apps/raycast` sends the clipboard (text, links, files, screenshots) to yourself or any chat, searches messages, links WhatsApp and shows the engine's status. It needs no setup: it uses the token the engine writes for it. Load it once with `mise run dev:raycast`.
+**Raycast.** `apps/raycast` sends the clipboard (text, links, files, screenshots) to yourself or any chat, searches messages, links WhatsApp and shows the engine's status. With the default `WA_HOME` and port it needs no setup: it uses the token the engine writes for it. Against `mise run dev:engine` (`.wa-dev`, port 7374) or a custom `WA_HOME`, set its Token and Port preferences. Load it once with `mise run dev:raycast`.
 
 **AI agents (MCP).** Give an agent a profile and wire it into a project:
 
