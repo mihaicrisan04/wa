@@ -1,10 +1,35 @@
-import { ENGINE_VERSION } from "@wa/engine";
-import { EXIT_USAGE, type Command, type CommandIO } from "./command";
+import { ConfigError, ENGINE_VERSION } from "@wa/engine";
+import { WaApiError } from "@wa/sdk";
+import { EXIT_FAILURE, EXIT_USAGE, UsageError, type Command, type CommandIO } from "./command";
+import { audit } from "./commands/audit";
+import { chats } from "./commands/chats";
+import { collections } from "./commands/collections";
+import { link } from "./commands/link";
+import { profiles } from "./commands/profiles";
+import { read } from "./commands/read";
 import { reindex } from "./commands/reindex";
+import { search } from "./commands/search";
 import { selftest } from "./commands/selftest";
 import { serve } from "./commands/serve";
+import { status } from "./commands/status";
+import { tokens } from "./commands/tokens";
+import { EngineUnavailableError } from "./engine-client";
+import { who } from "./output";
 
-export const COMMANDS: Command[] = [serve, reindex, selftest];
+export const COMMANDS: Command[] = [
+  serve,
+  link,
+  status,
+  chats,
+  read,
+  search,
+  collections,
+  profiles,
+  tokens,
+  audit,
+  reindex,
+  selftest,
+];
 
 export function helpText(): string {
   const visible = COMMANDS.filter((command) => !command.hidden);
@@ -32,16 +57,36 @@ export async function runCli(argv: string[], io: CommandIO): Promise<number> {
   try {
     return await command.run(args, io);
   } catch (err) {
-    if (isUsageError(err)) {
-      io.err(`wa ${name}: ${err.message}`);
-      return EXIT_USAGE;
-    }
-    throw err;
+    return report(name, err, io);
   }
+}
+
+/** Expected failures become one clear line (and candidates); anything else is a bug. */
+function report(name: string, err: unknown, io: CommandIO): number {
+  if (isUsageError(err) || err instanceof ConfigError) {
+    io.err(`wa ${name}: ${err.message}`);
+    return EXIT_USAGE;
+  }
+  if (err instanceof EngineUnavailableError) {
+    io.err(`wa ${name}: ${err.message}`);
+    return EXIT_FAILURE;
+  }
+  if (err instanceof WaApiError) {
+    io.err(`wa ${name}: ${err.message}`);
+    if (err.candidates.length) {
+      io.err("did you mean one of:");
+      for (const candidate of err.candidates) {
+        io.err(`  ${who(candidate.jid, candidate.name)}  ${candidate.jid}`);
+      }
+    }
+    return EXIT_FAILURE;
+  }
+  throw err;
 }
 
 /** `util.parseArgs` rejects unknown or malformed options with these codes. */
 function isUsageError(err: unknown): err is Error {
+  if (err instanceof UsageError) return true;
   const code = (err as { code?: unknown } | null)?.code;
   return typeof code === "string" && code.startsWith("ERR_PARSE_ARGS_");
 }
