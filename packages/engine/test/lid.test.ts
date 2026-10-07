@@ -1,19 +1,19 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { proto } from "@whiskeysockets/baileys";
-import { buildMessage, content, historySet, keyOf } from "../src/testing";
 import {
   ANA_LID,
   ANA_PN,
   BOB_LID,
   BOB_PN,
+  buildMessage,
+  content,
   GROUP,
+  historySet,
+  keyOf,
   ME_LID,
   ME_PN,
-  count,
-  harness,
-  messageRows,
-  type Harness,
-} from "./support/harness";
+} from "../src/testing";
+import { count, harness, messageRows, type Harness } from "./support/harness";
 
 let h: Harness;
 
@@ -21,16 +21,6 @@ beforeEach(() => {
   h = harness();
 });
 afterEach(() => h.close());
-
-const upsert = (...messages: ReturnType<typeof buildMessage>[]) =>
-  h.emit({ "messages.upsert": { messages, type: "notify" } });
-
-function addToCollection(chatJid: string) {
-  h.store.db.run("INSERT OR IGNORE INTO collections (name, created_at) VALUES ('master', 0)");
-  h.store.db
-    .query("INSERT INTO collection_chats (collection, chat_jid) VALUES ('master', $chatJid)")
-    .run({ chatJid });
-}
 
 const members = () =>
   h.store.db
@@ -40,7 +30,7 @@ const members = () =>
 
 describe("one canonical jid per person", () => {
   test("the same contact as @lid and @s.whatsapp.net is one chat", async () => {
-    await upsert(
+    await h.upsert(
       buildMessage({
         chat: ANA_LID,
         remoteJidAlt: ANA_PN,
@@ -58,7 +48,7 @@ describe("one canonical jid per person", () => {
   });
 
   test("a group sender's LID resolves through participantAlt", async () => {
-    await upsert(
+    await h.upsert(
       buildMessage({
         chat: GROUP,
         participant: ANA_LID,
@@ -71,10 +61,10 @@ describe("one canonical jid per person", () => {
 
   test("unknown LIDs are looked up in Baileys' LID store, device suffix dropped", async () => {
     await h.client.lidMapping.storeLIDPNMappings([{ lid: BOB_LID, pn: BOB_PN }]);
-    await upsert(buildMessage({ chat: BOB_LID, message: content.text("hi") }));
+    await h.upsert(buildMessage({ chat: BOB_LID, message: content.text("hi") }));
     // the authoritative mapping arriving later must not split the chat
     await h.emit({ "lid-mapping.update": { lid: BOB_LID, pn: BOB_PN } });
-    await upsert(buildMessage({ chat: BOB_PN, message: content.text("again") }));
+    await h.upsert(buildMessage({ chat: BOB_PN, message: content.text("again") }));
 
     expect(h.store.identity.pnForLid(BOB_LID)).toBe(BOB_PN);
     expect(h.store.db.query("SELECT jid FROM chats").all()).toEqual([{ jid: BOB_PN }]);
@@ -82,12 +72,12 @@ describe("one canonical jid per person", () => {
   });
 
   test("without any mapping the LID is the canonical jid", async () => {
-    await upsert(buildMessage({ chat: BOB_LID, message: content.text("who?") }));
+    await h.upsert(buildMessage({ chat: BOB_LID, message: content.text("who?") }));
     expect(h.store.chats.get(BOB_LID)?.kind).toBe("dm");
   });
 
   test("own LID and PN are the self chat", async () => {
-    await upsert(
+    await h.upsert(
       buildMessage({ chat: ME_LID, fromMe: true, message: content.text("lid note") }),
       buildMessage({ chat: ME_PN, fromMe: true, message: content.text("pn note") }),
     );
@@ -109,7 +99,7 @@ describe("a mapping learned later", () => {
         },
       ],
     });
-    await upsert(
+    await h.upsert(
       buildMessage({
         chat: BOB_LID,
         id: "3EB0DM1",
@@ -131,9 +121,10 @@ describe("a mapping learned later", () => {
       }),
     );
     h.store.chats.upsert(BOB_LID, "dm", { archived: true });
-    addToCollection(BOB_LID);
+    h.store.collections.create("master", null);
+    h.store.collections.addChat("master", BOB_LID);
     // the same message also reached the PN chat
-    await upsert(
+    await h.upsert(
       buildMessage({
         chat: BOB_PN,
         id: "3EB0DUP",
@@ -173,7 +164,9 @@ describe("a mapping learned later", () => {
 
   test("later messages addressed to the LID land in the PN chat", async () => {
     await h.emit({ "lid-mapping.update": { lid: BOB_LID, pn: BOB_PN } });
-    await upsert(buildMessage({ chat: BOB_LID, id: "3EB0LATER", message: content.text("later") }));
+    await h.upsert(
+      buildMessage({ chat: BOB_LID, id: "3EB0LATER", message: content.text("later") }),
+    );
     expect(messageRows(h.store, BOB_PN).map((row) => row.id)).toContain("3EB0LATER");
     expect(h.store.chats.get(BOB_LID)).toBeNull();
   });
@@ -190,7 +183,7 @@ describe("merging copies of the same message", () => {
   const merge = () => h.emit({ "lid-mapping.update": { lid: ANA_LID, pn: ANA_PN } });
 
   test("a revoke tombstone under the LID wins over content under the PN", async () => {
-    await upsert(
+    await h.upsert(
       buildMessage({ chat: ANA_PN, id: "3EB0X", message: content.image({ caption: "secret" }) }),
       buildMessage({
         chat: ANA_LID,
@@ -211,14 +204,14 @@ describe("merging copies of the same message", () => {
 
   test("an edited copy under the LID wins over an older one under the PN", async () => {
     const original = buildMessage({ chat: ANA_LID, id: "3EB0E", message: content.text("v1") });
-    await upsert(original);
-    await upsert(
+    await h.upsert(original);
+    await h.upsert(
       buildMessage({
         chat: ANA_LID,
         message: content.edit(keyOf(original), "v2", 1_700_000_050_000),
       }),
     );
-    await upsert(buildMessage({ chat: ANA_PN, id: "3EB0E", message: content.text("v1") }));
+    await h.upsert(buildMessage({ chat: ANA_PN, id: "3EB0E", message: content.text("v1") }));
     await merge();
 
     expect(messageRows(h.store, ANA_PN)).toEqual([
@@ -235,7 +228,7 @@ describe("quotes", () => {
       participant: ANA_LID,
       message: content.text("quoted"),
     });
-    await upsert(buildMessage({ chat: ANA_LID, message: content.reply("privately", original) }));
+    await h.upsert(buildMessage({ chat: ANA_LID, message: content.reply("privately", original) }));
     const row = h.store.db
       .query<{ quoted_chat_jid: string; quoted_participant: string }, []>(
         "SELECT quoted_chat_jid, quoted_participant FROM messages",
@@ -285,7 +278,7 @@ describe("a person's role across their jids", () => {
       participant: ANA_PN,
       message: content.text("mine"),
     });
-    await upsert(message);
+    await h.upsert(message);
     await h.emit({
       "messages.update": [
         {

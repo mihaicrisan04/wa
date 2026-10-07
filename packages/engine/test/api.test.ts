@@ -1,15 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createWaClient } from "@wa/sdk";
 import { Hono } from "hono";
-import pino from "pino";
 import { z } from "zod";
 import { errorHandler } from "../src/api/errors";
 import { ApiError } from "../src/errors";
 import { ENGINE_VERSION } from "../src/config";
 import { startEngine, type Engine } from "../src/engine";
-import { FakeWhatsAppClient, makeTempHome, type TempHome } from "../src/testing";
-
-const logger = pino({ level: "silent" });
+import { FakeWhatsAppClient, makeTempHome, silentLogger, type TempHome } from "../src/testing";
 
 describe("engine HTTP listener", () => {
   let temp: TempHome;
@@ -17,7 +14,10 @@ describe("engine HTTP listener", () => {
 
   beforeEach(async () => {
     temp = await makeTempHome();
-    engine = await startEngine(temp.config, { client: new FakeWhatsAppClient(), logger });
+    engine = await startEngine(temp.config, {
+      client: new FakeWhatsAppClient(),
+      logger: silentLogger,
+    });
   });
 
   afterEach(async () => {
@@ -98,7 +98,7 @@ describe("error handler", () => {
     .get("/crash", () => {
       throw new Error("SQLITE_CORRUPT: database disk image is malformed at /secret/path");
     });
-  app.onError(errorHandler(logger));
+  app.onError(errorHandler(silentLogger));
 
   test("maps ApiError to its status and code", async () => {
     const response = await app.request("/api-error");

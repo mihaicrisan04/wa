@@ -1,16 +1,18 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { Readable } from "node:stream";
-import { PROFILE_CAPABILITIES } from "@wa/sdk";
 import { authenticate } from "../src/tokens";
 import { chatNames, type ReadContext } from "../src/queries";
-import { startApi, type ApiHarness } from "./support/api";
-import { BOB_PN, EVE_PN, ME_PN } from "./support/jids";
+import {
+  BOB_PN,
+  EVE_PN,
+  fakeMediaDownload,
+  ME_PN,
+  startApi,
+  type ApiHarness,
+} from "../src/testing";
 import { connectMcp, type McpSession } from "./support/mcp";
 import {
   BOB_TEXT_ID,
+  LAB,
   MASTER,
   MASTER_IMAGE_ID,
   MASTER_QUOTE_ID,
@@ -18,7 +20,7 @@ import {
   SECRET_IMAGE_ID,
   SECRET_MARKERS,
   SECRET_TEXT_ID,
-  worldEvents,
+  scopedWorld,
 } from "./support/world";
 
 /**
@@ -27,8 +29,6 @@ import {
  * Nothing about the secret group or the DM with Bob may come back in text, structured content,
  * errors or candidates; and `raw` never does.
  */
-const LAB = "120363000000000042@g.us";
-
 interface Probe {
   args: Record<string, unknown>;
   isError: boolean;
@@ -37,7 +37,6 @@ interface Probe {
 }
 
 let api: ApiHarness;
-let exportDir: string;
 let session: McpSession;
 let masterToken: string;
 
@@ -111,38 +110,14 @@ function probes(): Record<string, Probe[]> {
 }
 
 beforeAll(async () => {
-  exportDir = await mkdtemp(join(tmpdir(), "wa export leak "));
-  api = await startApi({
-    engine: {
-      exportDir,
-      mediaDownload: (async () => Readable.from([Buffer.from("jpeg")])) as never,
-    },
-  });
-  await api.emit(worldEvents());
-  await api.emit({
-    "groups.upsert": [
-      { id: LAB, subject: "Lab Project", owner: undefined, participants: [{ id: ME_PN }] },
-    ],
-  });
-  const token = api.token({
-    name: "master",
-    capabilities: [...PROFILE_CAPABILITIES],
-    collections: ["master"],
-  });
-  const { store } = api.engine;
-  store.collections.addChat("master", MASTER);
-  store.collections.addChat("master", LAB);
-  store.collections.create("secrets", null);
-  store.collections.addChat("secrets", SECRET);
-  store.collections.addChat("secrets", BOB_PN);
-  session = await connectMcp(api, token);
-  masterToken = token;
+  api = await startApi({ engine: { mediaDownload: fakeMediaDownload(Buffer.from("jpeg")) } });
+  masterToken = await scopedWorld(api);
+  session = await connectMcp(api, masterToken);
 });
 
 afterAll(async () => {
   await session.close();
   await api.stop();
-  await rm(exportDir, { recursive: true, force: true });
 });
 
 test("every tool is covered by the leak suite", async () => {

@@ -1,11 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { stat, writeFile } from "node:fs/promises";
 import { hashToken } from "../src/tokens";
 import { raycastTokenPath } from "../src/config";
-import { startEngine } from "../src/engine";
-import { FakeWhatsAppClient } from "../src/testing";
-import { json, startApi, type ApiHarness } from "./support/api";
-import { silent } from "./support/harness";
+import { json, startApi, type ApiHarness } from "../src/testing";
 import { MASTER, worldEvents } from "./support/world";
 
 let api: ApiHarness;
@@ -69,9 +66,8 @@ describe("scope changes apply per request", () => {
     const token = api.token({
       name: "master",
       capabilities: ["chats:read"],
-      collections: ["master"],
+      collections: { master: [MASTER] },
     });
-    api.engine.store.collections.addChat("master", MASTER);
     expect((await api.http(`/v1/chats/${enc(MASTER)}`, token)).status).toBe(200);
 
     await api.admin(`/v1/admin/collections/master/chats/${enc(MASTER)}`, { method: "DELETE" });
@@ -89,33 +85,22 @@ describe("the raycast built-in", () => {
   test("has a working token in a 0600 file", async () => {
     const path = raycastTokenPath(api.temp.home);
     expect(((await stat(path)).mode & 0o777).toString(8)).toBe("600");
-    const token = (await readFile(path, "utf8")).trim();
+    const token = await api.raycastToken();
     expect((await api.http("/v1/chats", token)).status).toBe(200);
     expect((await api.http("/v1/qr", token)).status).toBe(200);
   });
 
   test("keeps its token across restarts, and replaces one that stopped working", async () => {
-    const path = raycastTokenPath(api.temp.home);
-    const before = (await readFile(path, "utf8")).trim();
-    await api.engine.stop();
+    const before = await api.raycastToken();
+    await api.restart();
+    expect(await api.raycastToken()).toBe(before);
 
-    let engine = await startEngine(api.temp.config, {
-      client: new FakeWhatsAppClient(),
-      logger: silent,
-    });
-    expect((await readFile(path, "utf8")).trim()).toBe(before);
-    await engine.stop();
-
-    await writeFile(path, "wa_tampered\n");
-    engine = await startEngine(api.temp.config, {
-      client: new FakeWhatsAppClient(),
-      logger: silent,
-    });
-    const after = (await readFile(path, "utf8")).trim();
+    await writeFile(raycastTokenPath(api.temp.home), "wa_tampered\n");
+    const { store } = await api.restart();
+    const after = await api.raycastToken();
     expect(after).not.toBe(before);
-    expect(engine.store.tokens.findActive(hashToken(before))).toBeNull();
-    expect(engine.store.tokens.findActive(hashToken(after))?.profile).toBe("raycast");
-    api.engine = engine;
+    expect(store.tokens.findActive(hashToken(before))).toBeNull();
+    expect(store.tokens.findActive(hashToken(after))?.profile).toBe("raycast");
   });
 
   test("can't be deleted", async () => {
@@ -124,7 +109,7 @@ describe("the raycast built-in", () => {
   });
 
   test("link starts pairing only while unlinked", async () => {
-    const token = (await readFile(raycastTokenPath(api.temp.home), "utf8")).trim();
+    const token = await api.raycastToken();
     const linked = await api.http("/v1/link", token, json({}));
     expect(linked.status).toBe(409);
     expect(await linked.json()).toMatchObject({ error: { code: "already_linked" } });

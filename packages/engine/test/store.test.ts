@@ -3,45 +3,15 @@ import { migrate, openDatabase } from "../src/store/db";
 import { MIGRATIONS } from "../src/store/migrations";
 import { nowSeconds } from "../src/clock";
 import { openStore, toFtsQuery, type MessageRecord, type Store } from "../src/store";
-import { ANA_PN } from "./support/jids";
+import { ANA_PN, messageRecord } from "../src/testing";
+import { count } from "./support/harness";
 
 let store: Store;
-
-function count(store: Store, sql: string): number {
-  return store.db.query<{ n: number }, []>(`SELECT count(*) AS n FROM (${sql})`).get()!.n;
-}
 
 beforeEach(() => {
   store = openStore(":memory:");
 });
 afterEach(() => store.close());
-
-function record(overrides: Partial<MessageRecord> = {}): MessageRecord {
-  return {
-    chatJid: ANA_PN,
-    id: "3EB0A",
-    fromMe: false,
-    senderJid: ANA_PN,
-    senderAlt: null,
-    ts: 1_700_000_000,
-    type: "text",
-    text: "hello",
-    caption: null,
-    fileName: null,
-    quotedId: null,
-    quotedChatJid: null,
-    quotedParticipant: null,
-    quotedText: null,
-    editedAt: null,
-    deletedAt: null,
-    expiresAt: null,
-    viewOnce: false,
-    source: "live",
-    raw: "{}",
-    media: null,
-    ...overrides,
-  };
-}
 
 const textOf = () => store.messages.get({ chatJid: ANA_PN, id: "3EB0A" })?.text;
 
@@ -89,26 +59,26 @@ describe("migrations", () => {
     expect(() =>
       store.db.run("INSERT INTO chats (jid, kind, updated_at) VALUES ('x', 'nope', 0)"),
     ).toThrow();
-    expect(() => store.messages.upsert(record({ source: "nope" as "live" }))).toThrow();
+    expect(() => store.messages.upsert(messageRecord({ source: "nope" as "live" }))).toThrow();
   });
 });
 
 describe("message upserts", () => {
   test("a placeholder is replaced by content", () => {
-    store.messages.upsert(record({ type: "placeholder", text: null }));
-    expect(store.messages.upsert(record({ text: "decrypted" }))).toBe(true);
+    store.messages.upsert(messageRecord({ type: "placeholder", text: null }));
+    expect(store.messages.upsert(messageRecord({ text: "decrypted" }))).toBe(true);
     expect(textOf()).toBe("decrypted");
   });
 
   test("content is never replaced by a placeholder", () => {
-    store.messages.upsert(record());
-    expect(store.messages.upsert(record({ type: "placeholder", text: null }))).toBe(false);
+    store.messages.upsert(messageRecord());
+    expect(store.messages.upsert(messageRecord({ type: "placeholder", text: null }))).toBe(false);
     expect(textOf()).toBe("hello");
   });
 
   test("a later copy with content refreshes the row but keeps the first source", () => {
-    store.messages.upsert(record({ source: "live" }));
-    store.messages.upsert(record({ source: "history", text: "hello again" }));
+    store.messages.upsert(messageRecord({ source: "live" }));
+    store.messages.upsert(messageRecord({ source: "history", text: "hello again" }));
     expect(store.messages.get({ chatJid: ANA_PN, id: "3EB0A" })).toMatchObject({
       text: "hello again",
       source: "live",
@@ -116,9 +86,9 @@ describe("message upserts", () => {
   });
 
   test("a tombstone is never resurrected", () => {
-    store.messages.upsert(record());
+    store.messages.upsert(messageRecord());
     store.messages.tombstone({ chatJid: ANA_PN, id: "3EB0A" }, 1_700_000_100, null);
-    expect(store.messages.upsert(record({ text: "old copy" }))).toBe(false);
+    expect(store.messages.upsert(messageRecord({ text: "old copy" }))).toBe(false);
     store.messages.updateRaw({ chatJid: ANA_PN, id: "3EB0A" }, '{"message":{}}');
     expect(store.messages.get({ chatJid: ANA_PN, id: "3EB0A" })).toMatchObject({
       type: "revoked",
@@ -128,18 +98,18 @@ describe("message upserts", () => {
   });
 
   test("an older copy never reverts an edit", () => {
-    store.messages.upsert(record());
+    store.messages.upsert(messageRecord());
     store.messages.applyEdit(
       { chatJid: ANA_PN, id: "3EB0A" },
       { type: "text", text: "edited", caption: null, editedAt: 1_700_000_200, raw: "{}" },
     );
-    expect(store.messages.upsert(record({ text: "hello" }))).toBe(false);
+    expect(store.messages.upsert(messageRecord({ text: "hello" }))).toBe(false);
     expect(textOf()).toBe("edited");
   });
 
   test("an incoming tombstone wins over content", () => {
-    store.messages.upsert(record());
-    store.messages.upsert(record({ type: "revoked", text: null, deletedAt: 1_700_000_100 }));
+    store.messages.upsert(messageRecord());
+    store.messages.upsert(messageRecord({ type: "revoked", text: null, deletedAt: 1_700_000_100 }));
     expect(store.messages.get({ chatJid: ANA_PN, id: "3EB0A" })).toMatchObject({
       type: "revoked",
       deleted_at: 1_700_000_100,
@@ -149,7 +119,7 @@ describe("message upserts", () => {
 
 describe("full-text search", () => {
   function add(id: string, overrides: Partial<MessageRecord>) {
-    store.messages.upsert(record({ id, ...overrides }));
+    store.messages.upsert(messageRecord({ id, ...overrides }));
   }
 
   test("ignores diacritics in both directions", () => {
@@ -195,7 +165,7 @@ describe("full-text search", () => {
   test("can be limited by a condition on the message", () => {
     add("1", { text: "shared word" });
     store.messages.upsert(
-      record({ chatJid: "other@s.whatsapp.net", id: "2", text: "shared word" }),
+      messageRecord({ chatJid: "other@s.whatsapp.net", id: "2", text: "shared word" }),
     );
     const where = { sql: "m.chat_jid = $chat", params: { chat: "other@s.whatsapp.net" } };
     expect(store.messages.search("shared", { where }).map((hit) => hit.id)).toEqual(["2"]);
@@ -268,14 +238,14 @@ describe("profiles", () => {
 describe("disappearing messages", () => {
   test("are purged with their media once expired", () => {
     const now = nowSeconds();
-    store.messages.upsert(record({ id: "old", expiresAt: now + 100, media: null }));
+    store.messages.upsert(messageRecord({ id: "old", expiresAt: now + 100, media: null }));
     store.media.upsert(
       { chatJid: ANA_PN, id: "old" },
       { kind: "image", mimetype: "image/jpeg", fileName: null, size: 1 },
     );
     store.media.markDownloaded({ chatJid: ANA_PN, id: "old" }, "/tmp/wa-test-media.jpeg", 1);
-    store.messages.upsert(record({ id: "new", expiresAt: now + 10_000 }));
-    store.messages.upsert(record({ id: "keeps", expiresAt: null }));
+    store.messages.upsert(messageRecord({ id: "new", expiresAt: now + 10_000 }));
+    store.messages.upsert(messageRecord({ id: "keeps", expiresAt: null }));
 
     expect(store.purgeExpired(now + 500)).toEqual(["/tmp/wa-test-media.jpeg"]);
     expect(count(store, "SELECT id FROM messages")).toBe(2);

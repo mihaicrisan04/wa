@@ -1,17 +1,19 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { proto, type WAMessage } from "@whiskeysockets/baileys";
-import { buildMessage, content, historySet, keyOf, type FakeWhatsAppClient } from "../src/testing";
 import {
   ANA_LID,
   ANA_PN,
   BOB_LID,
   BOB_PN,
+  buildMessage,
+  content,
   EVE_PN,
   GROUP,
-  harness,
-  messageRows,
-  type Harness,
-} from "./support/harness";
+  historySet,
+  keyOf,
+  type FakeWhatsAppClient,
+} from "../src/testing";
+import { harness, messageRows, type Harness } from "./support/harness";
 
 let h: Harness;
 

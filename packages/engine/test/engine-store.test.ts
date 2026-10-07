@@ -1,45 +1,34 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { initAuthCreds } from "@whiskeysockets/baileys";
-import { startEngine, type Engine } from "../src/engine";
 import {
-  FakeWhatsAppClient,
+  ANA_PN,
   buildMessage,
   content,
+  eventually,
+  GROUP,
   keyOf,
-  makeTempHome,
-  type TempHome,
+  ME_PN,
+  silentLogger,
+  startApi,
+  type ApiHarness,
+  type FakeWhatsAppClient,
 } from "../src/testing";
+import type { Engine } from "../src/engine";
 import type { SocketHooks } from "../src/whatsapp/client";
 import { socketConfig } from "../src/whatsapp/socket";
-import { ANA_PN, GROUP, ME, ME_PN, silent } from "./support/harness";
 
-let temp: TempHome;
+let api: ApiHarness;
 let engine: Engine;
 let client: FakeWhatsAppClient;
 let hooks: SocketHooks;
 
 beforeEach(async () => {
-  temp = await makeTempHome();
-  engine = await startEngine(temp.config, {
-    client: (_auth, given) => {
-      hooks = given;
-      client = new FakeWhatsAppClient();
-      return client;
-    },
-    logger: silent,
-    purgeIntervalMs: 5,
-  });
-  await engine.connection.link();
-  client.pair(ME);
-  await client.idle();
-  client.open();
-  await client.idle();
+  api = await startApi({ onHooks: (given) => (hooks = given), engine: { purgeIntervalMs: 5 } });
+  engine = api.engine;
+  client = api.client();
 });
 
-afterEach(async () => {
-  await engine.stop();
-  await temp.cleanup();
-});
+afterEach(() => api.stop());
 
 describe("engine wiring", () => {
   test("ingests the socket's events into the store", async () => {
@@ -86,19 +75,17 @@ describe("engine wiring", () => {
       type: "notify",
     });
     await client.idle();
-    const deadline = Date.now() + 1_000;
-    while (engine.store.messages.get({ chatJid: ANA_PN, id: "3EB0POOF" }) && Date.now() < deadline)
-      await Bun.sleep(5);
-    expect(engine.store.messages.get({ chatJid: ANA_PN, id: "3EB0POOF" })).toBeNull();
+    await eventually(
+      () => engine.store.messages.get({ chatJid: ANA_PN, id: "3EB0POOF" }) === null,
+      "the purge",
+    );
   });
 
   test("a purge that fails does not stop the next ones", async () => {
     const purge = spyOn(engine.store, "purgeExpired").mockImplementationOnce(() => {
       throw new Error("disk I/O error");
     });
-    const deadline = Date.now() + 1_000;
-    while (purge.mock.calls.length < 3 && Date.now() < deadline) await Bun.sleep(5);
-    expect(purge.mock.calls.length).toBeGreaterThanOrEqual(3);
+    await eventually(() => purge.mock.calls.length >= 3, "three purges");
     purge.mockRestore();
   });
 });
@@ -109,7 +96,7 @@ test("the Baileys socket config wires the hooks and the mandatory options", () =
   const config = socketConfig({
     version: [2, 3000, 1],
     auth: { creds: initAuthCreds(), keys: { get: async () => ({}), set: async () => undefined } },
-    logger: silent,
+    logger: silentLogger,
     hooks: { getMessage, cachedGroupMetadata },
   });
   expect(config).toMatchObject({

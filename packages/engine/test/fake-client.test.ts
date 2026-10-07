@@ -1,10 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { proto, type BaileysEventMap } from "@whiskeysockets/baileys";
+import type { BaileysEventMap } from "@whiskeysockets/baileys";
 import { Jimp, JimpMime } from "jimp";
-import { FakeWhatsAppClient, buildMessage, content, keyOf } from "../src/testing";
+import {
+  ANA_PN,
+  buildMessage,
+  content,
+  FakeWhatsAppClient,
+  HistorySyncType,
+  keyOf,
+  ME,
+} from "../src/testing";
 import { buildOutgoingContent } from "../src/whatsapp/outgoing";
-
-const ME = { id: "40700000001:7@s.whatsapp.net", lid: "123456789:7@lid" };
 
 function collect(client: FakeWhatsAppClient) {
   const batches: Partial<BaileysEventMap>[] = [];
@@ -19,16 +25,16 @@ describe("FakeWhatsAppClient events", () => {
     const client = new FakeWhatsAppClient(ME);
     const batches = collect(client);
     const first = buildMessage({
-      chat: "40700000002@s.whatsapp.net",
+      chat: ANA_PN,
       message: content.text("one"),
     });
     const second = buildMessage({
-      chat: "40700000002@s.whatsapp.net",
+      chat: ANA_PN,
       message: content.text("two"),
     });
 
     client.emitBatch({
-      "chats.upsert": [{ id: "40700000002@s.whatsapp.net", name: "Ana" }],
+      "chats.upsert": [{ id: ANA_PN, name: "Ana" }],
       "messages.upsert": { messages: [first, second], type: "notify" },
     });
     await client.idle();
@@ -48,7 +54,7 @@ describe("FakeWhatsAppClient events", () => {
       await Bun.sleep(10);
       done = true;
     });
-    client.emit("contacts.upsert", [{ id: "40700000002@s.whatsapp.net" }]);
+    client.emit("contacts.upsert", [{ id: ANA_PN }]);
     await client.idle();
     expect(done).toBe(true);
   });
@@ -59,17 +65,13 @@ describe("FakeWhatsAppClient.sendMessage", () => {
     const client = new FakeWhatsAppClient(ME);
     const batches = collect(client);
 
-    const sent = await client.sendMessage(
-      "40700000002@s.whatsapp.net",
-      { text: "hey" },
-      { messageId: "3EB0FIXED" },
-    );
+    const sent = await client.sendMessage(ANA_PN, { text: "hey" }, { messageId: "3EB0FIXED" });
     await client.idle();
 
     expect(sent?.key).toMatchObject({
       id: "3EB0FIXED",
       fromMe: true,
-      remoteJid: "40700000002@s.whatsapp.net",
+      remoteJid: ANA_PN,
     });
     expect(client.sent).toHaveLength(1);
     expect(batches[0]!["messages.upsert"]).toMatchObject({
@@ -91,7 +93,7 @@ describe("FakeWhatsAppClient.sendMessage", () => {
       caption: "pic",
     });
 
-    const sent = await client.sendMessage("40700000002@s.whatsapp.net", outgoing);
+    const sent = await client.sendMessage(ANA_PN, outgoing);
     expect(sent?.message?.imageMessage).toMatchObject({
       mimetype: "image/jpeg",
       caption: "pic",
@@ -104,9 +106,7 @@ describe("FakeWhatsAppClient.sendMessage", () => {
   test("can simulate send failures", async () => {
     const client = new FakeWhatsAppClient(ME);
     client.sendFailure = new Error("offline");
-    await expect(client.sendMessage("40700000002@s.whatsapp.net", { text: "x" })).rejects.toThrow(
-      "offline",
-    );
+    await expect(client.sendMessage(ANA_PN, { text: "x" })).rejects.toThrow("offline");
   });
 });
 
@@ -114,7 +114,7 @@ describe("FakeWhatsAppClient history and media", () => {
   test("history requests resolve with an id and are answered later as ON_DEMAND", async () => {
     const client = new FakeWhatsAppClient(ME);
     const batches = collect(client);
-    const oldest = buildMessage({ chat: "40700000002@s.whatsapp.net", ts: 1_700_000_000 });
+    const oldest = buildMessage({ chat: ANA_PN, ts: 1_700_000_000 });
 
     const requestId = await client.fetchMessageHistory(50, keyOf(oldest), 1_700_000_000_000);
     expect(client.historyRequests).toEqual([
@@ -122,11 +122,11 @@ describe("FakeWhatsAppClient history and media", () => {
     ]);
     expect(batches).toHaveLength(0);
 
-    const older = buildMessage({ chat: "40700000002@s.whatsapp.net", ts: 1_699_999_000 });
+    const older = buildMessage({ chat: ANA_PN, ts: 1_699_999_000 });
     client.respondToHistory(requestId, [older]);
     await client.idle();
     expect(batches[0]!["messaging-history.set"]).toMatchObject({
-      syncType: proto.HistorySync.HistorySyncType.ON_DEMAND,
+      syncType: HistorySyncType.ON_DEMAND,
       peerDataRequestSessionId: requestId,
       messages: [{ key: { id: older.key.id } }],
     });
@@ -134,7 +134,7 @@ describe("FakeWhatsAppClient history and media", () => {
 
   test("media reupload returns an updated message", async () => {
     const client = new FakeWhatsAppClient(ME);
-    const message = buildMessage({ chat: "40700000002@s.whatsapp.net", message: content.image() });
+    const message = buildMessage({ chat: ANA_PN, message: content.image() });
     const updated = await client.updateMediaMessage(message);
     expect(client.mediaReuploads).toEqual([message]);
     expect(updated.message?.imageMessage?.directPath).toBe("/v/t62.fixture-refreshed");

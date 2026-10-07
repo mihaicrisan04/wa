@@ -7,10 +7,18 @@ import {
   type downloadMediaMessage,
   type WAMessage,
 } from "@whiskeysockets/baileys";
-import { buildMessage, content, keyOf, makeTempHome, type TempHome } from "../src/testing";
+import {
+  ANA_PN,
+  buildMessage,
+  content,
+  keyOf,
+  makeTempHome,
+  silentLogger,
+  type TempHome,
+} from "../src/testing";
+import { harness, type Harness } from "./support/harness";
 import { MediaCache, MediaUnavailableError } from "../src/whatsapp/media";
 import { parseRaw } from "../src/whatsapp/raw";
-import { ANA_PN, harness, silent, type Harness } from "./support/harness";
 
 let h: Harness;
 let temp: TempHome;
@@ -24,7 +32,7 @@ beforeEach(async () => {
   media = new MediaCache({
     store: h.store,
     home: temp.home,
-    logger: silent,
+    logger: silentLogger,
     client: () => (online ? h.client : null),
   });
 });
@@ -175,7 +183,7 @@ describe("a message revoked while its download is in flight", () => {
     const racing = new MediaCache({
       store: h.store,
       home: temp.home,
-      logger: silent,
+      logger: silentLogger,
       client: () => h.client,
       download: (async (message: WAMessage, _type: unknown, _options: unknown, ctx) => {
         await gate.promise;
@@ -223,7 +231,7 @@ describe("disappearing media", () => {
     return new MediaCache({
       store: h.store,
       home: temp.home,
-      logger: silent,
+      logger: silentLogger,
       client: () => h.client,
       download: download as typeof downloadMediaMessage,
     });

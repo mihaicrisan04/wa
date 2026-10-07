@@ -1,11 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { readFile, stat } from "node:fs/promises";
 import type { OutboxEntry, Recipient, SendResult } from "@wa/sdk";
-import { startEngine } from "../src/engine";
-import { FakeWhatsAppClient } from "../src/testing";
-import { eventually, json, startApi, type ApiHarness } from "./support/api";
-import { silent } from "./support/harness";
-import { ME, ME_PN } from "./support/jids";
+import { ANA_PN, eventually, json, ME, ME_PN, startApi, type ApiHarness } from "../src/testing";
 import { MASTER, SECRET, worldEvents } from "./support/world";
 
 let api: ApiHarness;
@@ -16,7 +12,7 @@ const SELF_ONLY = { name: "self", capabilities: ["send:self" as const], allChats
 const SCOPED_SENDER = {
   name: "master-send",
   capabilities: ["send" as const, "chats:read" as const],
-  collections: ["master"],
+  collections: { master: [MASTER] },
 };
 
 async function send(token: string, body: unknown): Promise<Response> {
@@ -62,7 +58,7 @@ describe("send:self", () => {
     api = await startApi();
     const token = api.token(SELF_ONLY);
     await sent(await send(token, { to: ME_PN, text: "exact own jid" }));
-    for (const to of [MASTER, "40700000002@s.whatsapp.net", ME.id, "+40 700 000 001"]) {
+    for (const to of [MASTER, ANA_PN, ME.id, "+40 700 000 001"]) {
       const response = await send(token, { to, text: "nope" });
       expect(`${to} ${response.status}`).toBe(`${to} 403`);
     }
@@ -82,7 +78,6 @@ describe("send", () => {
     api = await startApi();
     await api.emit(worldEvents());
     const token = api.token(SCOPED_SENDER);
-    api.engine.store.collections.addChat("master", MASTER);
     await sent(await send(token, { to: "Master PP", text: "by name" }));
     for (const to of [SECRET, "Secret Project", "+40 700 000 003", "self"]) {
       expect((await send(token, { to, text: "nope" })).status).toBe(404);
@@ -93,7 +88,6 @@ describe("send", () => {
     api = await startApi();
     await api.emit(worldEvents());
     const token = api.token(SCOPED_SENDER);
-    api.engine.store.collections.addChat("master", MASTER);
     const result = await sent(await send(token, { to: MASTER, text: "secret text" }));
     const [row] = api.engine.store.audit.list({ profile: "master-send", limit: 5 });
     expect(row).toMatchObject({ action: "send", chat: MASTER });
@@ -178,7 +172,7 @@ describe("outbox", () => {
   });
 
   test("an entry that keeps failing is given up on so later ones still go out", async () => {
-    api = await startApi();
+    api = await startApi({ engine: { outboxMaxAttempts: 2 } });
     await api.emit(worldEvents());
     const client = api.client();
     const original = client.sendMessage;
@@ -190,27 +184,27 @@ describe("outbox", () => {
     const stuck = await sent(await send(token, { to: MASTER, text: "never" }));
     const later = await sent(await send(token, { to: "self", text: "still goes" }));
     await eventually(() => entry(later.outboxId).status === "sent", "the later entry");
-    expect(entry(stuck.outboxId)).toMatchObject({ status: "failed", attempts: 8 });
+    expect(entry(stuck.outboxId)).toMatchObject({ status: "failed", attempts: 2 });
   });
 
   test("an entry interrupted mid-send is retried with its id after a restart", async () => {
     api = await startApi({ open: false });
     const result = await sent(await send(api.token(SELF_ONLY), { to: "self", text: "again" }));
     api.engine.store.outbox.markSending(result.outboxId);
-    await api.engine.stop();
-    const client = new FakeWhatsAppClient(ME);
-    api.engine = await startEngine(api.temp.config, { client, logger: silent });
+    await api.restart();
     expect(entry(result.outboxId).status).toBe("queued");
-    client.open();
+    api.client().open();
     await eventually(() => entry(result.outboxId).status === "sent", "the resend");
-    expect(client.sent[0]?.message.key.id).toBe(result.messageId);
+    expect(api.client().sent[0]?.message.key.id).toBe(result.messageId);
   });
 
   test("entries past their hour expire instead of going out late", async () => {
     api = await startApi({ open: false });
     const bytes = new TextEncoder().encode("late");
     const result = await sent(await upload("self", "late.txt", bytes));
-    api.engine.store.db.run(`UPDATE outbox SET expires_at = 1 WHERE id = '${result.outboxId}'`);
+    api.engine.store.db
+      .query("UPDATE outbox SET expires_at = 1 WHERE id = $id")
+      .run({ id: result.outboxId });
     await api.engine.outbox.expire();
     expect(entry(result.outboxId).status).toBe("expired");
     expect(await stat(entry(result.outboxId).file_path!).catch(() => null)).toBeNull();

@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { proto } from "@whiskeysockets/baileys";
-import { buildMessage, content, keyOf } from "../src/testing";
 import {
   ANA_LID,
   ANA_PN,
   BOB_PN,
+  buildMessage,
+  content,
   EVE_PN,
   GROUP,
-  harness,
-  messageRows,
-  type Harness,
-} from "./support/harness";
+  keyOf,
+} from "../src/testing";
+import { harness, messageRows, type Harness } from "./support/harness";
 
 /** Edits and revokes that reach a message before its content does. */
 
@@ -20,9 +20,6 @@ beforeEach(() => {
   h = harness();
 });
 afterEach(() => h.close());
-
-const upsert = (...messages: ReturnType<typeof buildMessage>[]) =>
-  h.emit({ "messages.upsert": { messages, type: "notify" } });
 
 const ID = "3EB0LATE";
 
@@ -44,12 +41,12 @@ const from = (participant: string, message: proto.IMessage) =>
   buildMessage({ chat: GROUP, participant, message });
 
 test("a revoke of a message not decrypted yet keeps a tombstone the content cannot fill", async () => {
-  await upsert(stub());
-  await upsert(from(ANA_PN, content.revoke(keyOf(stub()))));
+  await h.upsert(stub());
+  await h.upsert(from(ANA_PN, content.revoke(keyOf(stub()))));
   expect(messageRows(h.store, GROUP)[0]).toMatchObject({ type: "revoked", text: null });
   expect(messageRows(h.store, GROUP)[0]!.deleted_at).toBeGreaterThan(0);
 
-  await upsert(decrypted(content.text("secret")));
+  await h.upsert(decrypted(content.text("secret")));
   expect(messageRows(h.store, GROUP)).toEqual([
     expect.objectContaining({ id: ID, type: "revoked", text: null }),
   ]);
@@ -58,9 +55,9 @@ test("a revoke of a message not decrypted yet keeps a tombstone the content cann
 });
 
 test("a spoofed revoke of a message not decrypted yet is ignored", async () => {
-  await upsert(stub());
-  await upsert(from(EVE_PN, content.revoke(keyOf(stub()))));
-  await upsert(decrypted(content.text("still here")));
+  await h.upsert(stub());
+  await h.upsert(from(EVE_PN, content.revoke(keyOf(stub()))));
+  await h.upsert(decrypted(content.text("still here")));
   expect(messageRows(h.store, GROUP)[0]).toMatchObject({
     type: "text",
     text: "still here",
@@ -69,11 +66,11 @@ test("a spoofed revoke of a message not decrypted yet is ignored", async () => {
 });
 
 test("an edit of a message not decrypted yet survives the original arriving", async () => {
-  await upsert(stub());
-  await upsert(from(ANA_PN, content.edit(keyOf(stub()), "v2", 1_700_000_100_000)));
+  await h.upsert(stub());
+  await h.upsert(from(ANA_PN, content.edit(keyOf(stub()), "v2", 1_700_000_100_000)));
   expect(messageRows(h.store, GROUP)[0]).toMatchObject({ type: "text", text: "v2" });
 
-  await upsert(decrypted(content.text("v1")));
+  await h.upsert(decrypted(content.text("v1")));
   expect(messageRows(h.store, GROUP)).toEqual([
     expect.objectContaining({ id: ID, type: "text", text: "v2", edited_at: 1_700_000_100 }),
   ]);
@@ -82,9 +79,9 @@ test("an edit of a message not decrypted yet survives the original arriving", as
 });
 
 test("a caption edited before decrypting keeps the original's media", async () => {
-  await upsert(stub());
-  await upsert(from(ANA_PN, content.edit(keyOf(stub()), "after", 1_700_000_100_000)));
-  await upsert(decrypted(content.image({ caption: "before" })));
+  await h.upsert(stub());
+  await h.upsert(from(ANA_PN, content.edit(keyOf(stub()), "after", 1_700_000_100_000)));
+  await h.upsert(decrypted(content.image({ caption: "before" })));
 
   expect(h.store.messages.get({ chatJid: GROUP, id: ID })).toMatchObject({
     type: "image",
@@ -99,9 +96,9 @@ test("a caption edited before decrypting keeps the original's media", async () =
 });
 
 test("a spoofed edit of a message not decrypted yet is ignored", async () => {
-  await upsert(stub());
-  await upsert(from(EVE_PN, content.edit(keyOf(stub()), "pwned")));
-  await upsert(decrypted(content.text("v1")));
+  await h.upsert(stub());
+  await h.upsert(from(EVE_PN, content.edit(keyOf(stub()), "pwned")));
+  await h.upsert(decrypted(content.text("v1")));
   expect(messageRows(h.store, GROUP)[0]).toMatchObject({ text: "v1", edited_at: null });
   expect(h.store.messages.search("pwned")).toEqual([]);
 });
@@ -127,15 +124,15 @@ test("a spoofed revoke folded into a buffered message leaves a placeholder the r
     expect.objectContaining({ id: ID, type: "placeholder", deleted_at: null, ts: 1_700_000_000 }),
   ]);
 
-  await upsert(decrypted(content.text("keep me")));
+  await h.upsert(decrypted(content.text("keep me")));
   expect(messageRows(h.store, GROUP)).toEqual([
     expect.objectContaining({ id: ID, type: "text", text: "keep me", sender_jid: ANA_PN }),
   ]);
 });
 
 test("a revoke from an unmapped LID hides the original sent under the PN until the mapping says who it is", async () => {
-  await upsert(from(ANA_LID, content.revoke(keyOf(stub()))));
-  await upsert(decrypted(content.text("secret")));
+  await h.upsert(from(ANA_LID, content.revoke(keyOf(stub()))));
+  await h.upsert(decrypted(content.text("secret")));
   expect(messageRows(h.store, GROUP)).toEqual([
     expect.objectContaining({ id: ID, type: "placeholder", text: null, deleted_at: null }),
   ]);
@@ -143,7 +140,7 @@ test("a revoke from an unmapped LID hides the original sent under the PN until t
   expect(h.ingest.messageContent(keyOf(stub()))).toBeUndefined();
 
   await h.emit({ "lid-mapping.update": { lid: ANA_LID, pn: ANA_PN } });
-  await upsert(decrypted(content.text("secret")));
+  await h.upsert(decrypted(content.text("secret")));
   expect(messageRows(h.store, GROUP)).toEqual([
     expect.objectContaining({ id: ID, type: "revoked", text: null }),
   ]);

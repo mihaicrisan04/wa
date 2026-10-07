@@ -7,7 +7,7 @@ import {
   type WAMessageKey,
 } from "@whiskeysockets/baileys";
 
-/** Synthetic fixtures only: everything here is built from scratch, never captured from an account. */
+// synthetic fixtures only: everything here is built from scratch, never captured from an account
 
 let sequence = 0;
 
@@ -152,7 +152,7 @@ export function historySet(partial: Partial<HistorySet> = {}): HistorySet {
     chats: [],
     contacts: [],
     messages: [],
-    syncType: proto.HistorySync.HistorySyncType.FULL,
+    syncType: HistorySyncType.FULL,
     progress: 100,
     isLatest: true,
     ...partial,

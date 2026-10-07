@@ -1,9 +1,15 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { chmod, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
-import pino from "pino";
 import { startEngine } from "../src/engine";
-import { FakeWhatsAppClient, makeTempHome, type TempHome } from "../src/testing";
+import {
+  FakeWhatsAppClient,
+  makeTempHome,
+  ME,
+  ME_PN,
+  silentLogger,
+  type TempHome,
+} from "../src/testing";
 
 let temp: TempHome;
 
@@ -26,20 +32,30 @@ async function modesUnder(dir: string): Promise<Record<string, string>> {
 test("everything the engine creates is 0600 files and 0700 dirs", async () => {
   await chmod(temp.home, 0o755);
   const client = new FakeWhatsAppClient();
-  const engine = await startEngine(temp.config, { client, logger: pino({ level: "silent" }) });
-  await engine.connection.link();
-  client.pair({ id: "40700000001:7@s.whatsapp.net" });
-  await client.idle();
-  // not open yet, so the upload waits in WA_HOME/outbox
-  await engine.outbox.enqueue(
-    "40700000001@s.whatsapp.net",
-    { kind: "file", bytes: new Uint8Array([1]), fileName: "a.txt", mimetype: null, caption: null },
-    null,
-  );
+  const engine = await startEngine(temp.config, { client, logger: silentLogger });
+  let modes: Record<string, string>;
+  try {
+    await engine.connection.link();
+    client.pair(ME);
+    await client.idle();
+    // not open yet, so the upload waits in WA_HOME/outbox
+    await engine.outbox.enqueue(
+      ME_PN,
+      {
+        kind: "file",
+        bytes: new Uint8Array([1]),
+        fileName: "a.txt",
+        mimetype: null,
+        caption: null,
+      },
+      null,
+    );
+    modes = await modesUnder(temp.home);
+  } finally {
+    await engine.stop();
+  }
 
   expect(((await stat(temp.home)).mode & 0o777).toString(8)).toBe("700");
-  const modes = await modesUnder(temp.home);
-  await engine.stop();
 
   expect(modes["auth"]).toBe("d700");
   expect(modes[join("auth", "creds.json")]).toBe("600");

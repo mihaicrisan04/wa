@@ -1,9 +1,15 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { PROFILE_CAPABILITIES } from "@wa/sdk";
-import { json, startApi, type ApiHarness } from "./support/api";
-import { BOB_PN, EVE_PN, ME_PN } from "./support/jids";
+import {
+  BOB_PN,
+  EVE_PN,
+  json,
+  mcpToolsListRequest,
+  startApi,
+  type ApiHarness,
+} from "../src/testing";
 import {
   BOB_TEXT_ID,
+  LAB,
   MASTER,
   MASTER_IMAGE_ID,
   MASTER_QUOTE_ID,
@@ -11,7 +17,7 @@ import {
   SECRET_IMAGE_ID,
   SECRET_MARKERS,
   SECRET_TEXT_ID,
-  worldEvents,
+  scopedWorld,
 } from "./support/world";
 
 /**
@@ -20,7 +26,6 @@ import {
  * Nothing about the secret group or the DM with Bob may come back: not as data, quotes,
  * participants, recipients, error text or ambiguity candidates; and `raw` never does.
  */
-const LAB = "120363000000000042@g.us";
 const enc = encodeURIComponent;
 
 interface Case {
@@ -37,11 +42,6 @@ let token: string;
 let secretOutboxId: string;
 
 const send = (to: string) => json({ to, text: "probe" });
-const mcpToolsList: RequestInit = {
-  method: "POST",
-  headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
-  body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
-};
 
 /** Every route the TCP listener serves must appear here, or the coverage test fails. */
 function cases(): Record<string, Case[]> {
@@ -121,29 +121,15 @@ function cases(): Record<string, Case[]> {
     ],
     "GET /v1/outbox/:id": [{ path: () => `/v1/outbox/${secretOutboxId}`, status: 404 }],
     // tools are probed one by one in mcp-leak.test.ts
-    "ALL /mcp": [{ path: "/mcp", init: mcpToolsList, status: 200, contains: ["read_messages"] }],
+    "ALL /mcp": [
+      { path: "/mcp", init: mcpToolsListRequest, status: 200, contains: ["read_messages"] },
+    ],
   };
 }
 
 beforeAll(async () => {
   api = await startApi();
-  await api.emit(worldEvents());
-  await api.emit({
-    "groups.upsert": [
-      { id: LAB, subject: "Lab Project", owner: undefined, participants: [{ id: ME_PN }] },
-    ],
-  });
-  token = api.token({
-    name: "master",
-    capabilities: [...PROFILE_CAPABILITIES],
-    collections: ["master"],
-  });
-  const { store } = api.engine;
-  store.collections.addChat("master", MASTER);
-  store.collections.addChat("master", LAB);
-  store.collections.create("secrets", null);
-  store.collections.addChat("secrets", SECRET);
-  store.collections.addChat("secrets", BOB_PN);
+  token = await scopedWorld(api);
   secretOutboxId = (await api.engine.outbox.enqueue(SECRET, { kind: "text", text: "x" }, null)).id;
 });
 

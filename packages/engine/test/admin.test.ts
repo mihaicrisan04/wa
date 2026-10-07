@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { stat, writeFile } from "node:fs/promises";
 import type {
   AuditEntry,
   ChatCandidate,
@@ -9,12 +9,19 @@ import type {
   Profile,
   TokenInfo,
 } from "@wa/sdk";
-import { raycastTokenPath } from "../src/config";
 import { EngineRunningError } from "../src/api/socket";
+import { socketPath } from "../src/config";
 import { startEngine } from "../src/engine";
-import { FakeWhatsAppClient, makeTempHome } from "../src/testing";
-import { json, startApi, type ApiHarness } from "./support/api";
-import { ANA_PN, BOB_PN, silent } from "./support/harness";
+import {
+  ANA_PN,
+  BOB_PN,
+  FakeWhatsAppClient,
+  json,
+  makeTempHome,
+  silentLogger,
+  startApi,
+  type ApiHarness,
+} from "../src/testing";
 import { MASTER, SECRET, worldEvents } from "./support/world";
 
 let api: ApiHarness;
@@ -41,14 +48,14 @@ describe("the admin socket", () => {
   test("admin routes don't exist on the TCP listener", async () => {
     const tcpRoutes = api.engine.apps.tcp.routes.map((route) => route.path);
     expect(tcpRoutes.filter((path) => path.startsWith("/v1/admin"))).toEqual([]);
-    const token = (await readFile(raycastTokenPath(api.temp.home), "utf8")).trim();
+    const token = await api.raycastToken();
     expect((await api.http("/v1/admin/collections", token)).status).toBe(404);
   });
 
   test("a second engine on the same WA_HOME is refused", async () => {
     const second = startEngine(api.temp.config, {
       client: new FakeWhatsAppClient(),
-      logger: silent,
+      logger: silentLogger,
     });
     await expect(second).rejects.toBeInstanceOf(EngineRunningError);
     expect((await api.admin("/v1/health")).status).toBe(200);
@@ -56,16 +63,22 @@ describe("the admin socket", () => {
 
   test("a socket file left by a crash is replaced", async () => {
     const temp = await makeTempHome();
-    await writeFile(`${temp.home}/engine.sock`, "");
-    const engine = await startEngine(temp.config, {
-      client: new FakeWhatsAppClient(),
-      logger: silent,
-    });
-    const response = await fetch("http://localhost/v1/health", { unix: engine.socketPath });
-    expect(response.status).toBe(200);
-    await engine.stop();
-    expect(await stat(engine.socketPath).catch(() => null)).toBeNull();
-    await temp.cleanup();
+    try {
+      await writeFile(socketPath(temp.home), "");
+      const engine = await startEngine(temp.config, {
+        client: new FakeWhatsAppClient(),
+        logger: silentLogger,
+      });
+      try {
+        const response = await fetch("http://localhost/v1/health", { unix: engine.socketPath });
+        expect(response.status).toBe(200);
+      } finally {
+        await engine.stop();
+      }
+      expect(await stat(engine.socketPath).catch(() => null)).toBeNull();
+    } finally {
+      await temp.cleanup();
+    }
   });
 });
 

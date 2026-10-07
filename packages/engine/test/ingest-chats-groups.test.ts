@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { buildChat, historySet } from "../src/testing";
-import { ANA_PN, BOB_LID, BOB_PN, EVE_PN, GROUP, harness, type Harness } from "./support/harness";
+import { ANA_PN, BOB_LID, BOB_PN, buildChat, EVE_PN, GROUP, historySet } from "../src/testing";
+import { harness, type Harness } from "./support/harness";
 
 let h: Harness;
 

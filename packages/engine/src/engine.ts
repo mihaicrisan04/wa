@@ -30,6 +30,8 @@ export interface StartEngineOptions {
   logger?: Logger;
   reconnectBackoff?: Backoff;
   outboxBackoff?: Backoff;
+  /** Failed sends before a queued entry is given up on. */
+  outboxMaxAttempts?: number;
   /** How often disappearing messages past their expiry are purged. */
   purgeIntervalMs?: number;
   /** Where MCP `download_media` exports files instead of `$TMPDIR/wa-export`. */
@@ -159,6 +161,7 @@ function createServices(
     client: connectedClient,
     me: () => connection.me(),
     backoff: options.outboxBackoff,
+    maxAttempts: options.outboxMaxAttempts,
   });
   connection.onOpen(() => outbox.flush());
   const backfills = new Backfills({
