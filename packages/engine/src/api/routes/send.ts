@@ -8,7 +8,7 @@ import { actorOf, assertCan, type Principal } from "../../policy";
 import { inScope, listRecipients, sendTarget, type ReadContext } from "../../queries";
 import type { OutboxPayload, OutboxRow } from "../../store";
 import { readContext, type ApiDeps, type AppContext, type AppEnv } from "../context";
-import { limitParam, optionalText, requiredText } from "../params";
+import { jsonBody, limitParam, optionalText, requiredText } from "../params";
 
 const MAX_TEXT = 65_536;
 
@@ -58,7 +58,7 @@ export function sendRoutes(deps: ApiDeps) {
 async function readSendRequest(c: AppContext): Promise<{ to: string; message: OutgoingMessage }> {
   const type = c.req.header("content-type") ?? "";
   if (!type.toLowerCase().startsWith("multipart/form-data")) {
-    const body = textBody.parse(await c.req.json().catch(() => invalidJson()));
+    const body = await jsonBody(c, textBody);
     return { to: body.to, message: { kind: "text", text: body.text } };
   }
   const form = await c.req.formData().catch(() => {
@@ -81,10 +81,6 @@ async function readSendRequest(c: AppContext): Promise<{ to: string; message: Ou
       caption: fields.caption ?? null,
     },
   };
-}
-
-function invalidJson(): never {
-  throw invalid("body: expected JSON");
 }
 
 /** Only the base name of what the client called the file, and never empty. */

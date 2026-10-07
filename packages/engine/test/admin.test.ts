@@ -182,3 +182,21 @@ describe("tokens and audit", () => {
     expect(byProfile.items).toEqual([]);
   });
 });
+
+test("a malformed JSON body is a 400 on every admin write", async () => {
+  await admin("/v1/admin/collections", json({ name: "master" }), 201);
+  const malformed = {
+    method: "POST",
+    body: "{not json",
+    headers: { "content-type": "application/json" },
+  };
+  for (const path of [
+    "/v1/admin/collections",
+    "/v1/admin/collections/master/chats",
+    "/v1/admin/profiles",
+    "/v1/admin/tokens",
+  ]) {
+    const body = await admin<{ error: { code: string } }>(path, malformed, 400);
+    expect(body.error.code).toBe("invalid_request");
+  }
+});

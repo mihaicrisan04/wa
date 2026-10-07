@@ -6,7 +6,7 @@ import { notFound } from "../../../errors";
 import { ADMIN, actorOf } from "../../../policy";
 import type { TokenRow } from "../../../store";
 import type { ApiDeps, AppEnv } from "../../context";
-import { nameParam, optionalText } from "../../params";
+import { jsonBody, nameParam, optionalText } from "../../params";
 
 const createBody = z.object({ profile: nameParam, label: z.string().trim().max(200).optional() });
 const listQuery = z.object({ profile: optionalText });
@@ -18,7 +18,7 @@ export function tokenRoutes({ store }: ApiDeps) {
       return c.json({ items: store.tokens.list(profile).map(toTokenInfo) satisfies TokenInfo[] });
     })
     .post("/tokens", async (c) => {
-      const body = createBody.parse(await c.req.json());
+      const body = await jsonBody(c, createBody);
       if (!store.profiles.get(body.profile)) throw notFound("profile not found");
       const { row, token } = issueToken(store, body.profile, body.label || null);
       store.audit.record({

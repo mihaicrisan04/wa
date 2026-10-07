@@ -6,7 +6,7 @@ import { ADMIN, actorOf } from "../../../policy";
 import { resolveChat, type ReadContext } from "../../../queries";
 import type { CollectionRow } from "../../../store";
 import { readContext, type ApiDeps, type AppEnv } from "../../context";
-import { nameParam, requiredText } from "../../params";
+import { jsonBody, nameParam, requiredText } from "../../params";
 
 const createBody = z.object({
   name: nameParam,
@@ -24,7 +24,7 @@ export function collectionRoutes(deps: ApiDeps) {
       c.json({ items: store.collections.list().map(toCollection) satisfies Collection[] }),
     )
     .post("/collections", async (c) => {
-      const body = createBody.parse(await c.req.json());
+      const body = await jsonBody(c, createBody);
       if (!store.collections.create(body.name, body.description || null)) {
         throw new ApiError(409, "exists", `collection "${body.name}" already exists`);
       }
@@ -41,7 +41,7 @@ export function collectionRoutes(deps: ApiDeps) {
     .post("/collections/:name/chats", async (c) => {
       const name = c.req.param("name");
       if (!store.collections.get(name)) throw notFound("collection not found");
-      const { chats } = chatsBody.parse(await c.req.json());
+      const { chats } = await jsonBody(c, chatsBody);
       const ctx = readContext(c, deps);
       const jids = chats.map((chat) => resolveChat(ctx, chat, { stored: false }));
       store.transaction(() => {

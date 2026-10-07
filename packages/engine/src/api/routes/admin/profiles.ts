@@ -6,7 +6,7 @@ import { ApiError, invalid, notFound } from "../../../errors";
 import { ADMIN, actorOf } from "../../../policy";
 import type { ProfileRecord } from "../../../store";
 import type { ApiDeps, AppEnv } from "../../context";
-import { nameParam } from "../../params";
+import { jsonBody, nameParam } from "../../params";
 
 const createBody = z.object({
   name: nameParam,
@@ -24,7 +24,7 @@ export function profileRoutes({ store }: ApiDeps) {
       c.json({ items: store.profiles.list().map(toProfile) satisfies Profile[] }),
     )
     .post("/profiles", async (c) => {
-      const body = createBody.parse(await c.req.json());
+      const body = await jsonBody(c, createBody);
       const collections = [...new Set(body.collections ?? [])];
       if (body.allChats && collections.length) {
         throw invalid("give either collections or allChats, not both");
