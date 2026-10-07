@@ -1,35 +1,26 @@
-import { parseArgs } from "node:util";
-import { BACKFILL_DEFAULT_MAX, type BackfillJob } from "@wa/sdk";
-import { EXIT_FAILURE, UsageError, type Command, type CommandIO } from "../command";
+import { BACKFILL_DEFAULT_MAX, plural, type BackfillJob } from "@wa/sdk";
+import { positiveInt } from "../args";
+import { EXIT_FAILURE, FailureError, UsageError } from "../command";
+import { defineCommand } from "../define";
 import { engineClient } from "../engine-client";
 import { json, time, who } from "../output";
-import { positiveInt } from "./chats";
 
 const POLL_MS = 1_000;
 
-export const backfill: Command = {
+export const backfill = defineCommand({
   name: "backfill",
   summary: "ask the phone for a chat's older messages",
-  async run(args, io) {
-    const { values, positionals } = parseArgs({
-      args,
-      options: {
-        max: { type: "string" },
-        json: { type: "boolean" },
-        help: { type: "boolean", short: "h" },
-      },
-      allowPositionals: true,
-      strict: true,
-    });
-    if (values.help) {
-      io.out(
-        `usage: wa backfill <chat> [--max n] [--json]\n\nAsks the phone for messages older than the oldest one stored, 50 at a time,\nuntil it has nothing older or --max (default ${BACKFILL_DEFAULT_MAX}) are stored. The phone must be\nonline. <chat> is a jid, a phone number or a unique part of the chat's name.`,
-      );
-      return 0;
-    }
+  usage: "wa backfill <chat> [--max n] [--json]",
+  description: `Asks the phone for messages older than the oldest one stored, 50 at a time,\nuntil it has nothing older or --max (default ${BACKFILL_DEFAULT_MAX}) are stored. The phone must be\nonline. <chat> is a jid, a phone number or a unique part of the chat's name.`,
+  options: {
+    max: { type: "string" },
+    json: { type: "boolean" },
+  },
+  variadic: true,
+  async run({ values, positionals }, io) {
     const chat = positionals.join(" ");
     if (!chat) throw new UsageError("which chat? (a jid, a phone number or a name)");
-    const max = values.max === undefined ? undefined : positiveInt(values.max, "--max");
+    const max = positiveInt(values.max, "--max");
 
     const wa = engineClient(io.env);
     let job = await wa.admin.backfill.start({ chat, max });
@@ -47,42 +38,45 @@ export const backfill: Command = {
         io.out(`${job.fetched} so far, back to ${time(job.oldestAt)}`);
       }
     }
-    if (values.json) io.out(json(job));
-    else report(job, io);
-    return FAILED.has(job.stopReason) ? EXIT_FAILURE : 0;
+    const failure = failureOf(job);
+    if (values.json) {
+      io.out(json(job));
+      return failure ? EXIT_FAILURE : 0;
+    }
+    if (failure) throw new FailureError(failure);
+    io.out(summaryOf(job));
+    return 0;
   },
-};
+});
 
-const FAILED: ReadonlySet<BackfillJob["stopReason"]> = new Set([
-  "no_anchor",
-  "disconnected",
-  "stopped",
-  "failed",
-]);
+/** Why the job stopped short, or null when it ended the way a backfill should. */
+function failureOf(job: BackfillJob): string | null {
+  switch (job.stopReason) {
+    case "max":
+    case "empty":
+    case "timeout":
+      return null;
+    case "no_anchor":
+      return "nothing stored in this chat yet, so there is nothing to page back from";
+    case "disconnected":
+      return `WhatsApp disconnected after ${job.fetched} messages; run it again once it is back`;
+    case "stopped":
+      return `the engine stopped after ${job.fetched} messages`;
+    default:
+      return `failed after ${job.fetched} messages (see the engine log)`;
+  }
+}
 
-function report(job: BackfillJob, io: CommandIO): void {
-  const fetched = `fetched ${job.fetched} older message${job.fetched === 1 ? "" : "s"}`;
+function summaryOf(job: BackfillJob): string {
+  const fetched = `fetched ${plural(job.fetched, "older message")}`;
   const oldest = job.oldestAt ? `; the oldest stored is from ${time(job.oldestAt)}` : "";
   switch (job.stopReason) {
     case "max":
-      return io.out(`${fetched} (the --max of ${job.max})${oldest}`);
+      return `${fetched} (the --max of ${job.max})${oldest}`;
     case "empty":
-      return io.out(`${fetched}; the phone has nothing older${oldest}`);
+      return `${fetched}; the phone has nothing older${oldest}`;
     case "timeout":
-      return io.out(
-        `${fetched}; the phone stopped answering (is it online? run it again to continue)${oldest}`,
-      );
-    case "no_anchor":
-      return io.err(
-        "wa backfill: nothing stored in this chat yet, so there is nothing to page back from",
-      );
-    case "disconnected":
-      return io.err(
-        `wa backfill: WhatsApp disconnected after ${job.fetched} messages; run it again once it is back`,
-      );
-    case "stopped":
-      return io.err(`wa backfill: the engine stopped after ${job.fetched} messages`);
     default:
-      return io.err(`wa backfill: failed after ${job.fetched} messages (see the engine log)`);
+      return `${fetched}; the phone stopped answering (is it online? run it again to continue)${oldest}`;
   }
 }

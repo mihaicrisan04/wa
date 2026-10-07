@@ -23,10 +23,12 @@ import { serve } from "./commands/serve";
 import { service } from "./commands/service";
 import { status } from "./commands/status";
 import { tokens } from "./commands/tokens";
+import { isHelp } from "./define";
 import { EngineUnavailableError } from "./engine-client";
+import { errorCode } from "./exec";
 import { who } from "./output";
 
-const COMMANDS: Command[] = [
+export const COMMANDS: Command[] = [
   serve,
   service,
   link,
@@ -53,7 +55,7 @@ export function helpText(): string {
 
 export async function runCli(argv: string[], io: CommandIO): Promise<number> {
   const [name, ...args] = argv;
-  if (!name || name === "help" || name === "--help" || name === "-h") {
+  if (!name || isHelp(name)) {
     io.out(helpText());
     return name ? 0 : EXIT_USAGE;
   }
@@ -100,6 +102,5 @@ function report(name: string, err: unknown, io: CommandIO): number {
 /** `util.parseArgs` rejects unknown or malformed options with these codes. */
 function isUsageError(err: unknown): err is Error {
   if (err instanceof UsageError) return true;
-  const code = (err as { code?: unknown } | null)?.code;
-  return typeof code === "string" && code.startsWith("ERR_PARSE_ARGS_");
+  return err instanceof Error && (errorCode(err)?.startsWith("ERR_PARSE_ARGS_") ?? false);
 }

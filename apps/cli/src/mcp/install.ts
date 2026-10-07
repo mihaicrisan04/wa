@@ -1,15 +1,17 @@
 import { realpath } from "node:fs/promises";
-import { loadConfig } from "@wa/engine";
+import { loadConfig, writeTokenFile } from "@wa/engine";
+import { engineUrl, type CreatedToken, type TokenInfo, type WaAdminClient } from "@wa/sdk";
 import { UsageError, type CommandIO } from "../command";
 import { engineClient } from "../engine-client";
 import { spawnExec, shellWord, waCommand } from "../exec";
 import { registerWithClaude } from "./claude";
 import { addDenyRules, denyReadRule } from "./settings";
-import { mcpTokenPath, projectKey, writeTokenFile } from "./token-file";
+import { mcpTokenPath, projectKey } from "./token-file";
 
-export type McpClient = "claude" | "codex";
+export const MCP_CLIENTS = ["claude", "codex"] as const;
+export type McpClient = (typeof MCP_CLIENTS)[number];
 
-export interface InstallOptions {
+interface InstallOptions {
   profile: string;
   /** The project directory; the current directory when absent. */
   project?: string;
@@ -21,30 +23,22 @@ const MAX_LABEL = 200;
 /** Issues a fresh token for the profile, retires the one issued before, and wires the client. */
 export async function installMcp(options: InstallOptions, io: CommandIO): Promise<number> {
   const config = loadConfig(io.env);
-  const url = `http://127.0.0.1:${config.port}/mcp`;
+  const url = `${engineUrl(config.port)}/mcp`;
   const dir = await realpath(options.project ?? io.cwd ?? process.cwd()).catch(() => {
     throw new UsageError(`--project: no such directory: ${options.project}`);
   });
-  const key = options.client === "claude" ? projectKey(dir) : "codex";
-  const labelKey = `mcp:${options.client}:${options.client === "claude" ? key : options.profile}`;
+  const { key, labelKey } = tokenKeys(options, dir);
   const tokenFile = mcpTokenPath(config.home, options.profile, key);
 
-  const admin = engineClient(io.env).admin;
-  const created = await admin.tokens.create({
+  const { created, revoked } = await rotateMcpToken(engineClient(io.env).admin, {
     profile: options.profile,
-    label: `${labelKey} ${dir}`.slice(0, MAX_LABEL),
+    labelKey,
+    dir,
   });
   await writeTokenFile(tokenFile, created.token);
-  const previous = (await admin.tokens.list()).filter(
-    (token) =>
-      token.id !== created.id &&
-      token.revokedAt === null &&
-      (token.label === labelKey || token.label?.startsWith(`${labelKey} `)),
-  );
-  for (const token of previous) await admin.tokens.revoke(token.id);
   io.err(
     `token ${created.id} for profile ${options.profile} in ${tokenFile}` +
-      (previous.length ? ` (revoked ${previous.map((token) => token.id).join(", ")})` : ""),
+      (revoked.length ? ` (revoked ${revoked.map((token) => token.id).join(", ")})` : ""),
   );
 
   if (options.client === "codex") {
@@ -70,6 +64,32 @@ export async function installMcp(options: InstallOptions, io: CommandIO): Promis
   const settings = await addDenyRules(dir, [...homes].map(denyReadRule));
   if (settings) io.out(`denied agents reading ${config.home} in ${settings}`);
   return 0;
+}
+
+/** Claude Code registers per project; Codex has one global config, so one token per profile. */
+function tokenKeys({ client, profile }: InstallOptions, dir: string) {
+  if (client === "codex") return { key: "codex", labelKey: `mcp:codex:${profile}` };
+  const key = projectKey(dir);
+  return { key, labelKey: `mcp:claude:${key}` };
+}
+
+/** A new token labelled `<labelKey> <dir>`; earlier active tokens with that label key are revoked. */
+async function rotateMcpToken(
+  admin: WaAdminClient,
+  { profile, labelKey, dir }: { profile: string; labelKey: string; dir: string },
+): Promise<{ created: CreatedToken; revoked: TokenInfo[] }> {
+  const created = await admin.tokens.create({
+    profile,
+    label: `${labelKey} ${dir}`.slice(0, MAX_LABEL),
+  });
+  const revoked = (await admin.tokens.list()).filter(
+    (token) =>
+      token.id !== created.id &&
+      token.revokedAt === null &&
+      (token.label === labelKey || token.label?.startsWith(`${labelKey} `)),
+  );
+  for (const token of revoked) await admin.tokens.revoke(token.id);
+  return { created, revoked };
 }
 
 /** Codex has only the global `~/.codex/config.toml`; the token comes from an env variable. */
