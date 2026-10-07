@@ -1,7 +1,8 @@
+import type { AuditEntry } from "@wa/sdk";
 import { nowSeconds } from "../clock";
 import type { Database } from "./db";
 
-export interface AuditRow {
+interface AuditRow {
   id: number;
   ts: number;
   token_id: string | null;
@@ -40,7 +41,7 @@ export class AuditRepo {
   }
 
   /** Newest first; `beforeId` pages back. */
-  list(options: { profile?: string; beforeId?: number; limit: number }): AuditRow[] {
+  list(options: { profile?: string; beforeId?: number; limit: number }): AuditEntry[] {
     return this.db
       .query<AuditRow, Record<string, string | number | null>>(
         `SELECT * FROM audit_log
@@ -51,6 +52,19 @@ export class AuditRepo {
         profile: options.profile ?? null,
         beforeId: options.beforeId ?? null,
         limit: options.limit,
-      });
+      })
+      .map(toEntry);
   }
+}
+
+function toEntry(row: AuditRow): AuditEntry {
+  return {
+    id: row.id,
+    ts: row.ts,
+    tokenId: row.token_id,
+    profile: row.profile,
+    action: row.action,
+    chat: row.chat_jid,
+    detail: row.detail ? (JSON.parse(row.detail) as Record<string, unknown>) : null,
+  };
 }

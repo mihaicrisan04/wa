@@ -265,7 +265,7 @@ describe("tool behavior", () => {
     await session.call("read_messages", { chat: "nobody at all" });
     await session.call("send_message", { to: "self", text: "audit me" });
     const rows = api.engine.store.audit.list({ profile: "audited", limit: 10 }).reverse();
-    expect(rows.map((row) => [row.action, row.chat_jid, JSON.parse(row.detail ?? "{}")])).toEqual([
+    expect(rows.map((row) => [row.action, row.chat, row.detail])).toEqual([
       ["mcp:read_messages", MASTER, { count: 3 }],
       ["mcp:read_messages", null, { error: "not_found" }],
       ["send", ME_PN, expect.objectContaining({ via: "mcp", kind: "text" })],
@@ -288,7 +288,7 @@ describe("tool behavior", () => {
     const missing = await session.call("read_messages", {});
     expect(missing.text).toContain("error invalid_request");
     const rows = api.engine.store.audit.list({ profile: "sloppy", limit: 10 });
-    expect(rows.map((row) => [row.action, row.chat_jid, JSON.parse(row.detail ?? "{}")])).toEqual([
+    expect(rows.map((row) => [row.action, row.chat, row.detail])).toEqual([
       ["mcp:read_messages", null, { error: "invalid_request" }],
       ["mcp:read_messages", null, { error: "invalid_request" }],
     ]);

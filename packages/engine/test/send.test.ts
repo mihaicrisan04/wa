@@ -95,8 +95,8 @@ describe("send", () => {
     api.engine.store.collections.addChat("master", MASTER);
     const result = await sent(await send(token, { to: MASTER, text: "secret text" }));
     const [row] = api.engine.store.audit.list({ profile: "master-send", limit: 5 });
-    expect(row).toMatchObject({ action: "send", chat_jid: MASTER });
-    expect(JSON.parse(row!.detail!)).toEqual({ outboxId: result.outboxId, kind: "text" });
+    expect(row).toMatchObject({ action: "send", chat: MASTER });
+    expect(row!.detail).toEqual({ outboxId: result.outboxId, kind: "text" });
     expect(JSON.stringify(row)).not.toContain("secret text");
   });
 
