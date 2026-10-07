@@ -176,6 +176,22 @@ describe("outbox", () => {
     expect(entry(result.outboxId).attempts).toBeGreaterThanOrEqual(3);
   });
 
+  test("an entry that keeps failing is given up on so later ones still go out", async () => {
+    api = await startApi();
+    await api.emit(worldEvents());
+    const client = api.client();
+    const original = client.sendMessage;
+    client.sendMessage = async (jid, content, options) => {
+      if (jid === MASTER) throw new Error("rejected");
+      return original(jid, content, options);
+    };
+    const token = api.token({ name: "everyone", capabilities: ["send"], allChats: true });
+    const stuck = await sent(await send(token, { to: MASTER, text: "never" }));
+    const later = await sent(await send(token, { to: "self", text: "still goes" }));
+    await eventually(() => entry(later.outboxId).status === "sent", "the later entry");
+    expect(entry(stuck.outboxId)).toMatchObject({ status: "failed", attempts: 8 });
+  });
+
   test("an entry interrupted mid-send is retried with its id after a restart", async () => {
     api = await startApi({ open: false });
     const result = await sent(await send(api.token(SELF_ONLY), { to: "self", text: "again" }));

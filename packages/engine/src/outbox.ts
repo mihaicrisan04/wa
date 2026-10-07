@@ -30,10 +30,13 @@ export interface OutboxOptions {
   backoff?: { baseMs: number; maxMs: number };
   /** How long an entry may wait before it expires instead of going out late. */
   ttlSeconds?: number;
+  /** Failed sends before an entry is given up on, so one bad entry can't hold up the queue. */
+  maxAttempts?: number;
 }
 
 const DEFAULT_BACKOFF = { baseMs: 1_000, maxMs: 60_000 };
 const DEFAULT_TTL_SECONDS = 60 * 60;
+const DEFAULT_MAX_ATTEMPTS = 8;
 
 /**
  * The persisted send queue. Each entry gets its WhatsApp message id when queued and reuses it on
@@ -154,12 +157,17 @@ export class Outbox {
     store.outbox.markSending(row.id);
     try {
       await client.sendMessage(row.chat_jid, content, { messageId: row.message_id });
+      store.outbox.finish(row.id, "sent");
     } catch (err) {
-      logger.warn({ err, outboxId: row.id }, "sending failed, will retry");
-      store.outbox.finish(row.id, "queued", "sending failed, retrying");
-      return false;
+      const attempts = row.attempts + 1;
+      if (attempts < (this.options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS)) {
+        logger.warn({ err, outboxId: row.id, attempts }, "sending failed, will retry");
+        store.outbox.finish(row.id, "queued", "sending failed, retrying");
+        return false;
+      }
+      logger.warn({ err, outboxId: row.id, attempts }, "sending failed, giving up");
+      store.outbox.finish(row.id, "failed", `sending failed after ${attempts} attempts`);
     }
-    store.outbox.finish(row.id, "sent");
     await this.removeFile(row);
     this.failures = 0;
     return true;
