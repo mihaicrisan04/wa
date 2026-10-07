@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from "hono";
-import { errorBody } from "./errors";
+import { ApiError } from "../errors";
 
 /**
  * Only same-machine, non-browser clients: the Host must name the loopback listener
@@ -10,13 +10,10 @@ export function localOnlyGuard(port: () => number): MiddlewareHandler {
     const host = c.req.header("host");
     const allowed = [`127.0.0.1:${port()}`, `localhost:${port()}`];
     if (!host || !allowed.includes(host.toLowerCase())) {
-      return c.json(
-        errorBody("forbidden_host", "requests must target 127.0.0.1 or localhost"),
-        403,
-      );
+      throw new ApiError(403, "forbidden_host", "requests must target 127.0.0.1 or localhost");
     }
     if (c.req.header("origin") !== undefined) {
-      return c.json(errorBody("forbidden_origin", "browser requests are not allowed"), 403);
+      throw new ApiError(403, "forbidden_origin", "browser requests are not allowed");
     }
     await next();
   };
