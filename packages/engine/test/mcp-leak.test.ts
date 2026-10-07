@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { PROFILE_CAPABILITIES } from "@wa/sdk";
+import { authenticate } from "../src/access";
+import { chatName, type ReadContext } from "../src/queries";
 import { startApi, type ApiHarness } from "./support/api";
 import { BOB_PN, EVE_PN, ME_PN } from "./support/jids";
 import { connectMcp, type McpSession } from "./support/mcp";
@@ -37,6 +39,7 @@ interface Probe {
 let api: ApiHarness;
 let exportDir: string;
 let session: McpSession;
+let masterToken: string;
 
 /** Every tool a full-capability token gets must appear here, or the coverage test fails. */
 function probes(): Record<string, Probe[]> {
@@ -133,6 +136,7 @@ beforeAll(async () => {
   store.collections.addChat("secrets", SECRET);
   store.collections.addChat("secrets", BOB_PN);
   session = await connectMcp(api, token);
+  masterToken = token;
 });
 
 afterAll(async () => {
@@ -149,6 +153,14 @@ test("tool descriptions and instructions name nothing out of scope", async () =>
   const { tools } = await session.client.listTools();
   const listed = JSON.stringify(tools) + (session.client.getInstructions() ?? "");
   for (const marker of SECRET_MARKERS) expect(listed).not.toContain(marker);
+});
+
+test("chat names are looked up through the scope too", () => {
+  const { store } = api.engine;
+  const principal = authenticate(store, masterToken)!;
+  const ctx = { store, principal } as ReadContext;
+  expect(chatName(ctx, MASTER)).toBe("Master PP");
+  expect(chatName(ctx, SECRET)).toBeNull();
 });
 
 describe("a collection-scoped session never sees outside its scope", () => {

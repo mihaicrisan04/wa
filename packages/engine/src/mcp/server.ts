@@ -4,7 +4,7 @@ import { createMcpHandler, McpServer, type AuthInfo } from "@modelcontextprotoco
 import type { Handler } from "hono";
 import type { ApiDeps, AppEnv } from "../api/context";
 import { Identity } from "../ingest";
-import { can, type Principal } from "../policy";
+import { can, type TokenPrincipal } from "../policy";
 import { FENCE_CLOSE, FENCE_OPEN } from "./format";
 import { describeScope, visibleScope } from "./scope";
 import type { ToolEnv } from "./tool";
@@ -15,7 +15,7 @@ export function defaultExportDir(): string {
 }
 
 /** A fresh server for one request, holding only the tools the principal's capabilities allow. */
-export function buildServerFor(principal: Principal, deps: ApiDeps): McpServer {
+export function buildServerFor(principal: TokenPrincipal, deps: ApiDeps): McpServer {
   const env: ToolEnv = {
     deps,
     principal,
@@ -35,7 +35,7 @@ export function buildServerFor(principal: Principal, deps: ApiDeps): McpServer {
   return server;
 }
 
-function instructionsFor(principal: Principal, deps: ApiDeps): string {
+function instructionsFor(principal: TokenPrincipal, deps: ApiDeps): string {
   const scope = describeScope(visibleScope(deps.store, principal));
   const sending = can(principal, "send")
     ? "It can send text messages to the chats it sees."
@@ -58,14 +58,12 @@ export function mcpRoute(deps: ApiDeps): Handler<AppEnv> {
     // a tool call may wait on a media download
     deps.noTimeout?.(c.req.raw);
     const principal = c.get("principal");
+    if (principal.kind !== "token") throw new Error("/mcp is served only to bearer tokens");
     return handler.fetch(c.req.raw, { authInfo: authInfoOf(principal) });
   };
 }
 
-function authInfoOf(principal: Principal): AuthInfo {
-  if (principal.kind === "admin") {
-    return { token: "admin", clientId: "admin", scopes: ["admin"], extra: { principal } };
-  }
+function authInfoOf(principal: TokenPrincipal): AuthInfo {
   return {
     token: principal.tokenId,
     clientId: principal.profile,
@@ -74,8 +72,8 @@ function authInfoOf(principal: Principal): AuthInfo {
   };
 }
 
-function principalOf(authInfo: AuthInfo | undefined): Principal {
-  const principal = authInfo?.extra?.principal as Principal | undefined;
+function principalOf(authInfo: AuthInfo | undefined): TokenPrincipal {
+  const principal = authInfo?.extra?.principal as TokenPrincipal | undefined;
   if (!principal) throw new Error("an MCP request reached the server without a principal");
   return principal;
 }

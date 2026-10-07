@@ -1,4 +1,4 @@
-import type { Principal } from "../policy";
+import type { TokenPrincipal } from "../policy";
 import type { Store } from "../store";
 
 export interface VisibleScope {
@@ -8,8 +8,8 @@ export interface VisibleScope {
 }
 
 /** Read live, like every scope check: a membership change shows up on the next call. */
-export function visibleScope(store: Store, principal: Principal): VisibleScope {
-  if (principal.kind === "admin" || principal.allChats) return { allChats: true, collections: [] };
+export function visibleScope(store: Store, principal: TokenPrincipal): VisibleScope {
+  if (principal.allChats) return { allChats: true, collections: [] };
   return { allChats: false, collections: store.profiles.get(principal.profile)?.collections ?? [] };
 }
 

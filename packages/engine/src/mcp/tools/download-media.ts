@@ -71,8 +71,7 @@ function isInlineImage(media: CachedMedia): boolean {
 
 /** `<exportDir>/<profile>/<hash>.<ext>`: the cache's own hashed name, never the cache path. */
 async function exportCopy(env: ToolEnv, media: CachedMedia): Promise<string> {
-  const owner = env.principal.kind === "admin" ? "admin" : env.principal.profile;
-  const dir = join(env.exportDir, owner);
+  const dir = join(env.exportDir, env.principal.profile);
   await mkdir(dir, { recursive: true, mode: 0o700 });
   const path = join(dir, basename(media.path));
   await copyFile(media.path, path);

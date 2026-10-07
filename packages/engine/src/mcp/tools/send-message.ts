@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { actorOf, can, type Principal } from "../../policy";
+import { actorOf, can, type TokenPrincipal } from "../../policy";
 import { chatName, sendTarget } from "../../queries";
 import { chatRef, quote } from "../format";
 import { defineTool } from "../tool";
@@ -9,7 +9,7 @@ const MAX_TEXT = 65_536;
 export const sendMessageTool = defineTool({
   name: "send_message",
   title: "Send a WhatsApp message",
-  description: (principal: Principal) =>
+  description: (principal: TokenPrincipal) =>
     can(principal, "send")
       ? 'Sends a text message to a chat this token can see (a jid, phone number or name), or to "self" for your own chat. It is queued and sent as soon as WhatsApp is connected.'
       : 'Sends a text message to your own chat: `to` must be "self". It is queued and sent as soon as WhatsApp is connected.',

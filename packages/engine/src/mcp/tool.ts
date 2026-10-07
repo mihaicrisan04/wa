@@ -1,16 +1,21 @@
-import type { CallToolResult, ImageContent, McpServer } from "@modelcontextprotocol/server";
+import type {
+  CallToolResult,
+  ImageContent,
+  McpServer,
+  StandardSchemaWithJSON,
+} from "@modelcontextprotocol/server";
 import type { Capability } from "@wa/sdk";
 import { ZodError, type z } from "zod";
 import type { ApiDeps } from "../api/context";
 import { ApiError } from "../errors";
-import { actorOf, can, type Principal } from "../policy";
+import { actorOf, can, type TokenPrincipal } from "../policy";
 import type { ReadContext } from "../queries";
-import { candidateLine, fenced } from "./format";
+import { candidateLine, fenced, quote } from "./format";
 
 /** What a tool call runs with; the read context is built per call, so nothing is cached. */
 export interface ToolEnv {
   deps: ApiDeps;
-  principal: Principal;
+  principal: TokenPrincipal;
   read(): ReadContext;
   /** Where `download_media` copies files too large to return inline. */
   exportDir: string;
@@ -31,7 +36,7 @@ export interface ToolResult<T> {
 export interface ToolSpec<I extends z.ZodObject, O extends z.ZodObject> {
   name: string;
   title: string;
-  description: string | ((principal: Principal) => string);
+  description: string | ((principal: TokenPrincipal) => string);
   /** Any one of these lets a principal see and call the tool; none means every principal. */
   requires: Capability[];
   /** False for tools that change something (sending). */
@@ -43,7 +48,7 @@ export interface ToolSpec<I extends z.ZodObject, O extends z.ZodObject> {
 
 export interface Tool {
   name: string;
-  allowedFor(principal: Principal): boolean;
+  allowedFor(principal: TokenPrincipal): boolean;
   register(server: McpServer, env: ToolEnv): void;
 }
 
@@ -64,14 +69,13 @@ export function defineTool<I extends z.ZodObject, O extends z.ZodObject>(
             typeof spec.description === "function"
               ? spec.description(env.principal)
               : spec.description,
-          // the SDK's callback type can't be resolved for a generic schema, so it sees the base type
-          inputSchema: spec.input as z.ZodObject,
+          inputSchema: listedOnly(spec.input),
           outputSchema: spec.output as z.ZodObject,
           annotations: { readOnlyHint: readOnly, destructiveHint: false, openWorldHint: !readOnly },
         },
         async (args) => {
           try {
-            const result = await spec.run(args as z.output<I>, env);
+            const result = await spec.run(spec.input.parse(args), env);
             audit(env, spec.name, result.chat ?? null, { count: result.count ?? 1 });
             return {
               content: [
@@ -91,6 +95,14 @@ export function defineTool<I extends z.ZodObject, O extends z.ZodObject>(
   };
 }
 
+/**
+ * Clients see `schema`, but the SDK lets every call through: the handler parses it, so a call
+ * with bad arguments is audited like any other.
+ */
+function listedOnly(schema: z.ZodObject): StandardSchemaWithJSON {
+  return { "~standard": { ...schema["~standard"], validate: (value) => ({ value }) } };
+}
+
 /** Every MCP tool call is audited: who, which tool, which chat and how much, never content. */
 function audit(env: ToolEnv, tool: string, chat: string | null, detail: Record<string, unknown>) {
   env.deps.store.audit.record({
@@ -107,13 +119,13 @@ function toFailure(err: unknown, env: ToolEnv, tool: string) {
   let lines = ["error internal: internal error"];
   if (err instanceof ApiError) {
     code = err.code;
-    lines = [`error ${err.code}: ${err.message}`];
+    lines = [`error ${err.code}: ${quote(err.message)}`];
     if (err.candidates?.length) {
       lines.push("did you mean one of:", ...err.candidates.map(candidateLine));
     }
   } else if (err instanceof ZodError) {
     code = "invalid_request";
-    lines = [`error invalid_request: ${err.issues.map((issue) => issue.message).join("; ")}`];
+    lines = [`error invalid_request: ${quote(err.issues.map(issueText).join("; "))}`];
   } else {
     env.deps.logger.error({ err, tool }, "mcp tool failed");
   }
@@ -122,4 +134,8 @@ function toFailure(err: unknown, env: ToolEnv, tool: string) {
     content: [{ type: "text", text: fenced(lines) }],
   };
   return { code, result };
+}
+
+function issueText(issue: z.core.$ZodIssue): string {
+  return issue.path.length ? `${issue.path.join(".")}: ${issue.message}` : issue.message;
 }
