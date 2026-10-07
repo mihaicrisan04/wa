@@ -67,7 +67,8 @@ function chatPatch(chat: ChatFields): ChatPatch {
   if (name) patch.name = name;
   if (sent("archived")) patch.archived = Boolean(chat.archived);
   if (sent("pinned")) patch.pinned = chat.pinned ? toNumber(chat.pinned) : null;
-  if (sent("muteEndTime")) patch.muteEndTime = positive(chat.muteEndTime);
+  // -1 is "muted forever"
+  if (sent("muteEndTime")) patch.muteEndTime = nonZero(chat.muteEndTime);
   if (sent("ephemeralExpiration")) patch.ephemeralExpiration = chat.ephemeralExpiration || null;
   const lastMessageAt = positive(chat.conversationTimestamp) ?? positive(chat.lastMsgTimestamp);
   if (lastMessageAt) patch.lastMessageAt = lastMessageAt;
@@ -85,6 +86,11 @@ function unreadPatch(chat: ChatFields, isUpdate: boolean): ChatPatch {
   if (typeof chat.unreadCount !== "number") return {};
   if (isUpdate && chat.unreadCount > 0) return { unreadDelta: chat.unreadCount };
   return { unreadCount: chat.unreadCount };
+}
+
+function nonZero(value: Parameters<typeof toNumber>[0]): number | null {
+  const number = value == null ? 0 : toNumber(value);
+  return number !== 0 ? number : null;
 }
 
 function positive(value: Parameters<typeof toNumber>[0]): number | null {

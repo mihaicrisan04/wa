@@ -203,6 +203,13 @@ describe("chats", () => {
     });
   });
 
+  test("muted forever (-1) stays muted", async () => {
+    await h.emit({ "chats.update": [{ id: ANA_PN, muteEndTime: -1 }] });
+    expect(h.store.chats.get(ANA_PN)?.mute_end_time).toBe(-1);
+    await h.emit({ "chats.update": [{ id: ANA_PN, muteEndTime: 0 }] });
+    expect(h.store.chats.get(ANA_PN)?.mute_end_time).toBeNull();
+  });
+
   test("unread counts in updates add up, reset on read and mark unread", async () => {
     const unread = () => h.store.chats.get(ANA_PN)?.unread_count;
     const update = (unreadCount: number | null) =>
