@@ -7,7 +7,7 @@ export {
   tokensDir,
   type EngineConfig,
 } from "./config";
-export { writeFileAtomic } from "./fs";
+export { writeTokenFile } from "./tokens";
 export { startEngine, type Engine } from "./engine";
 export { EngineRunningError } from "./api/socket";
 export { reindexHome } from "./maintenance";

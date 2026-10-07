@@ -1,5 +1,8 @@
 export const DEFAULT_PORT = 7373;
 
+/** How to (re)start the engine, for clients' "not running" errors. */
+export const START_ENGINE = "`wa service install` (or `wa serve` in a terminal)";
+
 /** How many older messages `admin.backfill.start` asks for when `max` is left out. */
 export const BACKFILL_DEFAULT_MAX = 500;
 
@@ -89,6 +92,10 @@ export const MESSAGE_TYPES = [
   "revoked",
 ] as const;
 export type MessageType = (typeof MESSAGE_TYPES)[number];
+
+export function isMessageType(type: string): type is MessageType {
+  return MESSAGE_TYPES.some((known) => known === type);
+}
 
 export const HISTORY_SYNC_STATUSES = ["complete", "paused"] as const;
 export type HistorySyncStatus = (typeof HISTORY_SYNC_STATUSES)[number];
