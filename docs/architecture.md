@@ -171,7 +171,7 @@ wa reindex
 
 `<chat>` is a jid, a phone number or a unique part of the chat's name. Everything except `serve`, `service`, `mcp headers` and `reindex` needs a running engine and talks to it over `WA_HOME/engine.sock`.
 
-`wa service install` copies the binary it runs from to `~/.local/bin/wa` and installs the launchd agent `com.mihaicrisan.wa` (`~/Library/LaunchAgents/com.mihaicrisan.wa.plist`): it starts at login, restarts when it exits, runs with umask 077 and logs to `~/Library/Logs/wa/engine.log`. `WA_HOME`, `WA_PORT` and `WA_LOG_LEVEL` set during the install are kept in the plist. It also excludes `WA_HOME/auth` from Time Machine; the exclusion is on the directory, which the engine never replaces (earlier credentials move into `auth/previous/`), so it holds across relinks and logouts.
+`wa service install` copies the binary it runs from to `~/.local/bin/wa` and installs the launchd agent `com.mihaicrisan.wa` (`~/Library/LaunchAgents/com.mihaicrisan.wa.plist`): it starts at login, restarts when it exits, runs with umask 077 and logs to `~/Library/Logs/wa/engine.log`. `WA_HOME` (made absolute), `WA_PORT` and `WA_LOG_LEVEL` set during the install are kept in the plist. It also excludes `WA_HOME/auth` from Time Machine; the exclusion is on the directory, which the engine never replaces (earlier credentials move into `auth/previous/`), so it holds across relinks and logouts.
 
 ## Development
 

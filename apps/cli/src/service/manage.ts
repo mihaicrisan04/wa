@@ -9,13 +9,12 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { ENGINE_VERSION, defaultHome, loadConfig, type EngineConfig } from "@wa/engine";
 import { FailureError, type CommandIO } from "../command";
 import { spawnExec, waCommand, type Exec } from "../exec";
 import { table } from "../output";
 import {
-  SERVICE_ENV_KEYS,
   SERVICE_LABEL,
   bootoutCommand,
   bootstrapCommand,
@@ -24,6 +23,7 @@ import {
   printCommand,
   servicePaths,
   servicePlist,
+  type PlistOptions,
 } from "./launchd";
 
 const BOOTSTRAP_ATTEMPTS = 5;
@@ -39,12 +39,23 @@ interface Context {
 
 function context(io: CommandIO): Context {
   const userHome = io.homeDir ?? homedir();
+  const config = loadConfig({ ...io.env, WA_HOME: io.env.WA_HOME || defaultHome(userHome) });
   return {
     io,
     exec: io.exec ?? spawnExec,
     uid: process.getuid!(),
     paths: servicePaths(userHome),
-    config: loadConfig({ ...io.env, WA_HOME: io.env.WA_HOME || defaultHome(userHome) }),
+    // launchd starts the agent in /, so a relative WA_HOME would point somewhere else
+    config: { ...config, home: resolve(io.cwd ?? process.cwd(), config.home) },
+  };
+}
+
+/** The settings the install shell set, validated and with WA_HOME made absolute. */
+function pinnedEnv({ io, config }: Context): PlistOptions["env"] {
+  return {
+    WA_HOME: io.env.WA_HOME ? config.home : undefined,
+    WA_PORT: io.env.WA_PORT ? String(config.port) : undefined,
+    WA_LOG_LEVEL: io.env.WA_LOG_LEVEL ? config.logLevel : undefined,
   };
 }
 
@@ -62,9 +73,11 @@ export async function installService(io: CommandIO): Promise<number> {
   await mkdir(dirname(paths.logFile), { recursive: true, mode: 0o700 });
   await excludeAuthFromBackups(ctx);
 
-  const env = Object.fromEntries(SERVICE_ENV_KEYS.map((key) => [key, io.env[key]]));
   await mkdir(dirname(paths.plist), { recursive: true });
-  await writeFile(paths.plist, servicePlist({ binary: paths.binary, logFile: paths.logFile, env }));
+  await writeFile(
+    paths.plist,
+    servicePlist({ binary: paths.binary, logFile: paths.logFile, env: pinnedEnv(ctx) }),
+  );
   await chmod(paths.plist, 0o644);
 
   await exec(bootoutCommand(uid), { cwd: "/" });
@@ -164,19 +177,21 @@ export async function serviceLogs(
   io: CommandIO,
   { lines, follow }: { lines: number; follow: boolean },
 ): Promise<number> {
-  const { paths } = context(io);
+  const { exec, paths } = context(io);
   if (follow) {
     const tail = Bun.spawn(["tail", "-n", String(lines), "-F", paths.logFile], {
       stdio: ["ignore", "inherit", "inherit"],
     });
     return tail.exited;
   }
-  const text = await readFile(paths.logFile, "utf8").catch(() => null);
-  if (text === null) {
+  if (!(await Bun.file(paths.logFile).exists())) {
     io.err(`no logs yet at ${paths.logFile}`);
     return 1;
   }
-  for (const line of text.trimEnd().split("\n").slice(-lines)) io.out(line);
+  const tail = await exec(["tail", "-n", String(lines), paths.logFile], { cwd: "/" });
+  if (tail.code !== 0)
+    throw new FailureError(`could not read ${paths.logFile}: ${firstLine(tail)}`);
+  for (const line of tail.stdout.trimEnd().split("\n")) io.out(line);
   return 0;
 }
 

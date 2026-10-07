@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCli } from "../src/cli";
-import type { Exec, ExecResult } from "../src/exec";
+import { spawnExec, type Exec, type ExecResult } from "../src/exec";
 import { SERVICE_LABEL, parseLaunchctlPrint, servicePlist } from "../src/service/launchd";
 
 const OK: ExecResult = { code: 0, stdout: "", stderr: "" };
@@ -44,11 +44,12 @@ interface RunOptions {
   env?: Record<string, string | undefined>;
   exec?: Exec;
   waCommand?: string[];
+  cwd?: string;
 }
 
 async function run(
   argv: string[],
-  { env = { WA_HOME: waHome }, exec = recorder().exec, waCommand = [binary] }: RunOptions = {},
+  { env = { WA_HOME: waHome }, exec = recorder().exec, waCommand = [binary], cwd }: RunOptions = {},
 ) {
   const out: string[] = [];
   const err: string[] = [];
@@ -60,6 +61,7 @@ async function run(
     waCommand,
     homeDir: userHome,
     pollMs: 1,
+    cwd,
   });
   return { code, out: out.join("\n"), err: err.join("\n") };
 }
@@ -107,6 +109,22 @@ describe("wa service install", () => {
     expect(plist).toContain(`<key>WA_PORT</key>\n    <string>7400</string>`);
     expect(plist).not.toContain("WA_LOG_LEVEL");
     expect(plist).not.toContain("home & co");
+  });
+
+  test("a relative WA_HOME is pinned as an absolute path, since launchd starts in /", async () => {
+    const { calls, exec } = recorder();
+    const result = await run(["install"], {
+      env: { WA_HOME: "data", WA_PORT: "07400", WA_LOG_LEVEL: "debug" },
+      exec,
+      cwd: root,
+    });
+    expect(result.code).toBe(0);
+    expect(calls[0]).toEqual(["tmutil", "addexclusion", join(root, "data", "auth")]);
+    const plist = await readFile(plistPath(), "utf8");
+    expect(plist).toContain(`<key>WA_HOME</key>\n    <string>${join(root, "data")}</string>`);
+    expect(plist).toContain(`<key>WA_PORT</key>\n    <string>7400</string>`);
+    expect(plist).toContain(`<key>WA_LOG_LEVEL</key>\n    <string>debug</string>`);
+    expect(result.out).toContain(join(root, "data"));
   });
 
   test("the plist is valid for plutil", async () => {
@@ -229,7 +247,10 @@ describe("wa service logs", () => {
   test("prints the last n lines", async () => {
     await mkdir(join(userHome, "Library", "Logs", "wa"), { recursive: true });
     await writeFile(logFile(), "one\ntwo\nthree\n");
-    expect(await run(["logs", "-n", "2"])).toMatchObject({ code: 0, out: "two\nthree" });
+    expect(await run(["logs", "-n", "2"], { exec: spawnExec })).toMatchObject({
+      code: 0,
+      out: "two\nthree",
+    });
   });
 
   test("says so when there is no log yet", async () => {
