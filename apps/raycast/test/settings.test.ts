@@ -1,50 +1,44 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DEFAULT_PORT, engineUrl, WaApiError } from "@wa/sdk";
 import { describeError } from "../src/lib/errors";
 import { MissingTokenError, parsePort, raycastTokenPath, resolveToken } from "../src/lib/settings";
-import { tempDir } from "./support";
+import { useTempDir } from "./support";
 
-let home: string;
-let cleanup: () => Promise<void>;
-
-beforeEach(async () => {
-  ({ dir: home, cleanup } = await tempDir());
-});
-afterEach(() => cleanup());
+const home = useTempDir();
 
 async function writeEngineToken(token: string) {
-  await mkdir(join(home, "tokens"), { recursive: true });
-  await writeFile(raycastTokenPath(home), token);
+  await mkdir(join(home(), "tokens"), { recursive: true });
+  await writeFile(raycastTokenPath(home()), token);
 }
 
 describe("token", () => {
   test("the preference wins over the engine's file", async () => {
     await writeEngineToken("wa_from_file\n");
-    expect(await resolveToken("  wa_from_pref ", home)).toBe("wa_from_pref");
+    expect(await resolveToken("  wa_from_pref ", home())).toBe("wa_from_pref");
   });
 
   test("an empty preference falls back to tokens/raycast.token in WA_HOME", async () => {
     await writeEngineToken("wa_from_file\n");
-    expect(raycastTokenPath(home)).toBe(join(home, "tokens", "raycast.token"));
-    expect(await resolveToken("", home)).toBe("wa_from_file");
-    expect(await resolveToken("   ", home)).toBe("wa_from_file");
-    expect(await resolveToken(undefined, home)).toBe("wa_from_file");
+    expect(raycastTokenPath(home())).toBe(join(home(), "tokens", "raycast.token"));
+    expect(await resolveToken("", home())).toBe("wa_from_file");
+    expect(await resolveToken("   ", home())).toBe("wa_from_file");
+    expect(await resolveToken(undefined, home())).toBe("wa_from_file");
   });
 
   test("the file is read fresh, so a token the engine rotated is picked up", async () => {
     await writeEngineToken("wa_old");
-    expect(await resolveToken(undefined, home)).toBe("wa_old");
+    expect(await resolveToken(undefined, home())).toBe("wa_old");
     await writeEngineToken("wa_new");
-    expect(await resolveToken(undefined, home)).toBe("wa_new");
+    expect(await resolveToken(undefined, home())).toBe("wa_new");
   });
 
   test("no preference and no file is a MissingTokenError", async () => {
-    const error = await resolveToken(undefined, home).catch((err: unknown) => err);
+    const error = await resolveToken(undefined, home()).catch((err: unknown) => err);
     expect(error).toBeInstanceOf(MissingTokenError);
     await writeEngineToken("\n");
-    expect(await resolveToken(undefined, home).catch((err: unknown) => err)).toBeInstanceOf(
+    expect(await resolveToken(undefined, home()).catch((err: unknown) => err)).toBeInstanceOf(
       MissingTokenError,
     );
   });

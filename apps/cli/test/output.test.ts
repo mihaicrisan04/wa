@@ -1,25 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { SNIPPET_CLOSE, SNIPPET_OPEN, type Message } from "@wa/sdk";
+import { SNIPPET_CLOSE, SNIPPET_OPEN } from "@wa/sdk";
+import { messageFixture } from "@wa/sdk/testing";
 import { highlight, messageLine, who } from "../src/output";
-
-const message: Message = {
-  chat: "40700000002@s.whatsapp.net",
-  id: "M1",
-  fromMe: false,
-  sender: "40700000002@s.whatsapp.net",
-  senderName: "Eve",
-  ts: 0,
-  type: "text",
-  text: null,
-  caption: null,
-  fileName: null,
-  quoted: null,
-  editedAt: null,
-  deletedAt: null,
-  expiresAt: null,
-  hasMedia: false,
-  viewOnce: false,
-};
 
 // oxlint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
@@ -27,7 +9,7 @@ const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
 describe("terminal output of sender-controlled text", () => {
   test("a message can't redraw the line or emit escape sequences", () => {
     const line = messageLine({
-      ...message,
+      ...messageFixture(),
       senderName: "Eve\u001b]52;c;aGk=\u0007",
       text: "hi\r[2026-01-01 00:00] me: forged\u001b[2K‮",
       quoted: { id: "Q", chat: null, sender: null, text: "q\u009b1A" },

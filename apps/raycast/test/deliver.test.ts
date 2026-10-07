@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { truncate, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -12,15 +12,9 @@ import {
 } from "@wa/sdk";
 import { readClipboard } from "../src/lib/clipboard-media";
 import { isOnline, reportDelivery, sendContent, waitForDelivery } from "../src/lib/deliver";
-import { outboxEntry, tempDir } from "./support";
+import { outboxEntry, useTempDir } from "./support";
 
-let dir: string;
-let cleanup: () => Promise<void>;
-
-beforeEach(async () => {
-  ({ dir, cleanup } = await tempDir());
-});
-afterEach(() => cleanup());
+const dir = useTempDir();
 
 const RESULT: SendResult = { outboxId: "o1", messageId: "3EB0AA", status: "queued" };
 
@@ -56,7 +50,7 @@ describe("sending clipboard content", () => {
   });
 
   test("files are uploaded as bytes with their base name, never as a path", async () => {
-    const path = join(dir, "notes.pdf");
+    const path = join(dir(), "notes.pdf");
     await writeFile(path, "%PDF-1.7 bytes");
     const { client, files } = recordingClient();
     await sendContent(client, "self", { type: "file", filePath: path });
@@ -64,11 +58,11 @@ describe("sending clipboard content", () => {
     const [upload] = files;
     expect(upload?.fileName).toBe("notes.pdf");
     expect(await upload?.file.text()).toBe("%PDF-1.7 bytes");
-    expect(JSON.stringify(upload)).not.toContain(dir);
+    expect(JSON.stringify(upload)).not.toContain(dir());
   });
 
   test("a file over WhatsApp's 2 GB cap is refused before any upload starts", async () => {
-    const path = join(dir, "huge.mov");
+    const path = join(dir(), "huge.mov");
     await writeFile(path, "");
     // sparse: the size is there without writing 2 GB to disk
     await truncate(path, MAX_UPLOAD_BYTES + 1);
@@ -87,7 +81,7 @@ describe("sending clipboard content", () => {
   });
 
   test("a Finder file URL from the clipboard is uploaded from its decoded path", async () => {
-    const path = join(dir, "my photo.png");
+    const path = join(dir(), "my photo.png");
     await writeFile(path, "png");
     const content = readClipboard(undefined, `file://${encodeURI(path)}`, {
       pasteboardImage: false,

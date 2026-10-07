@@ -1,21 +1,15 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { mkdir, readdir, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pruneStaleFiles, removeExtractedImages } from "../src/lib/temp-files";
-import { tempDir } from "./support";
+import { useTempDir } from "./support";
 
-let dir: string;
-let cleanup: () => Promise<void>;
-
-beforeEach(async () => {
-  ({ dir, cleanup } = await tempDir());
-});
-afterEach(() => cleanup());
+const dir = useTempDir();
 
 const MINUTE = 60_000;
 
 async function fileAged(name: string, ageMs: number): Promise<string> {
-  const path = join(dir, name);
+  const path = join(dir(), name);
   await writeFile(path, "bytes");
   const at = new Date(Date.now() - ageMs);
   await utimes(path, at, at);
@@ -27,13 +21,13 @@ describe("temp files", () => {
     await fileAged("old.jpg", 11 * MINUTE);
     await fileAged("old.jpg.part", 30 * MINUTE);
     await fileAged("fresh.pdf", MINUTE);
-    await mkdir(join(dir, "nested"));
-    await pruneStaleFiles(dir, 10 * MINUTE);
-    expect((await readdir(dir)).sort()).toEqual(["fresh.pdf", "nested"]);
+    await mkdir(join(dir(), "nested"));
+    await pruneStaleFiles(dir(), 10 * MINUTE);
+    expect((await readdir(dir())).sort()).toEqual(["fresh.pdf", "nested"]);
   });
 
   test("pruning a folder that doesn't exist yet is fine", async () => {
-    await pruneStaleFiles(join(dir, "missing"), MINUTE);
+    await pruneStaleFiles(join(dir(), "missing"), MINUTE);
   });
 
   test("extracted pasteboard images are removed, the user's own files never", async () => {
@@ -44,6 +38,6 @@ describe("temp files", () => {
       { type: "file", filePath: own },
       { type: "text", text: "hi" },
     ]);
-    expect(await readdir(dir)).toEqual(["report.pdf"]);
+    expect(await readdir(dir())).toEqual(["report.pdf"]);
   });
 });
