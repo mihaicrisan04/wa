@@ -1,6 +1,5 @@
+import type { OutboxStatus } from "@wa/sdk";
 import { nowSeconds, type Database } from "./db";
-
-export type OutboxStatus = "queued" | "sending" | "sent" | "failed" | "expired";
 
 /** What to send; the file bytes themselves live at `file_path`. */
 export type OutboxPayload = (

@@ -4,7 +4,8 @@ import type {
   GroupParticipant,
   proto,
 } from "@whiskeysockets/baileys";
-import type { Participant, ParticipantRole } from "../store";
+import type { ParticipantRole } from "@wa/sdk";
+import type { Member } from "../store";
 import type { IngestContext } from "./context";
 import type { Batch } from "./lid";
 
@@ -21,7 +22,7 @@ export function ingestGroup(ctx: IngestContext, group: Partial<GroupMetadata>): 
   if (group.participants) {
     ctx.store.participants.replace(
       jid,
-      group.participants.map((participant) => toParticipant(ctx, participant)),
+      group.participants.map((participant) => toMember(ctx, participant)),
     );
   }
 }
@@ -62,7 +63,7 @@ const ROLE_BY_ACTION: Record<
   modify: null,
 };
 
-function toParticipant(ctx: IngestContext, participant: GroupParticipant): Participant {
+function toMember(ctx: IngestContext, participant: GroupParticipant): Member {
   const role: ParticipantRole =
     participant.admin === "superadmin" || participant.isSuperAdmin
       ? "superadmin"

@@ -8,23 +8,10 @@ import {
   type AuthenticationState,
   type BaileysEventMap,
 } from "@whiskeysockets/baileys";
+import type { ConnectionState } from "@wa/sdk";
 import type { Logger } from "../logger";
 import { nowSeconds } from "../store";
 import type { ClientEvents, ClientFactory, WhatsAppClient } from "./client";
-
-export type ConnectionState =
-  /** No credentials yet; idle until `link()`. */
-  | "not_linked"
-  /** Socket open for pairing, QR codes are being issued. */
-  | "linking"
-  | "connecting"
-  | "open"
-  | "reconnecting"
-  /** Logged out from the phone; credentials were moved aside. */
-  | "needs_link"
-  /** Another session took over; never reconnects on its own. */
-  | "replaced"
-  | "stopped";
 
 export interface OwnIdentity {
   pn: string;

@@ -25,12 +25,16 @@ export const PROFILE_CAPABILITIES = CAPABILITIES.filter(
 export type ProfileCapability = (typeof PROFILE_CAPABILITIES)[number];
 
 export type ConnectionState =
+  /** No credentials yet; idle until linked. */
   | "not_linked"
+  /** Socket open for pairing, QR codes are being issued. */
   | "linking"
   | "connecting"
   | "open"
   | "reconnecting"
+  /** Logged out from the phone; credentials were moved aside. */
   | "needs_link"
+  /** Another session took over; never reconnects on its own. */
   | "replaced"
   | "stopped";
 
@@ -96,10 +100,12 @@ export interface Chat {
   lastMessageAt: number | null;
 }
 
+export type ParticipantRole = "member" | "admin" | "superadmin" | "left";
+
 export interface Participant {
   jid: string;
   name: string | null;
-  role: "member" | "admin" | "superadmin" | "left";
+  role: ParticipantRole;
 }
 
 export interface ChatDetail extends Chat {

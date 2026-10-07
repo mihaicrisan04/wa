@@ -1,3 +1,4 @@
+import type { HistorySyncStatus } from "@wa/sdk";
 import { proto, type BaileysEventMap } from "@whiskeysockets/baileys";
 import type { Normalized } from "../whatsapp/normalize";
 import { nowSeconds } from "../store";
@@ -14,7 +15,7 @@ export const HISTORY_PHASES_KEY = "history.phases";
 export interface HistoryPhase {
   /** 0-100 from the phase's last chunk. */
   progress: number | null;
-  status: "complete" | "paused" | null;
+  status: HistorySyncStatus | null;
   /** False when Baileys inferred the status from silence instead of WhatsApp saying so. */
   explicit: boolean | null;
   chunks: number;

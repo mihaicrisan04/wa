@@ -84,7 +84,7 @@ export function openStore(path: string): Store {
 export { nowSeconds } from "./db";
 export type { CollectionRow, ProfileRecord, ProfileSpec, TokenRow } from "./access";
 export type { AuditRecord, AuditRow } from "./audit";
-export type { NewOutboxEntry, OutboxPayload, OutboxRow, OutboxStatus } from "./outbox";
+export type { NewOutboxEntry, OutboxPayload, OutboxRow } from "./outbox";
 export type { ChatKind, ChatPatch, ChatRow } from "./chats";
 export type { ContactPatch, ContactRow } from "./contacts";
 export type { MediaRow } from "./media";
@@ -97,6 +97,6 @@ export {
   type MessageRow,
   type OldestMessage,
 } from "./messages";
-export type { Participant, ParticipantRole } from "./participants";
+export type { Member } from "./participants";
 export type { PendingRevoke } from "./pending-revokes";
 export { toFtsQuery, type SearchHit, type SearchOptions } from "./search";
