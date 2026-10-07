@@ -1,0 +1,16 @@
+{
+  "name": "@wa/cli",
+  "version": "0.1.0",
+  "private": true,
+  "bin": {
+    "wa": "./src/index.ts"
+  },
+  "type": "module",
+  "dependencies": {
+    "@wa/engine": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "typescript": "~5.9.3"
+  }
+}

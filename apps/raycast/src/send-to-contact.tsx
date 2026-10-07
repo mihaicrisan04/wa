@@ -29,7 +29,7 @@ export default function Command() {
       try {
         const res = await fetch(`http://localhost:${port}/contacts?q=${encodeURIComponent(query)}`);
         if (res.ok) {
-          setContacts(await res.json());
+          setContacts((await res.json()) as Contact[]);
         }
       } catch {
         // daemon not reachable

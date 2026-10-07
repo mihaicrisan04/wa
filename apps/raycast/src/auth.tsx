@@ -29,7 +29,7 @@ export default function Command() {
     try {
       const statusRes = await fetch(`http://localhost:${port}/status`);
       if (!statusRes.ok) throw new Error("daemon unreachable");
-      const status = await statusRes.json();
+      const status = (await statusRes.json()) as { connected: boolean; phoneNumber: string | null };
 
       if (status.connected) {
         setState({
@@ -43,7 +43,7 @@ export default function Command() {
       }
 
       const qrRes = await fetch(`http://localhost:${port}/qr`);
-      const qrData = await qrRes.json();
+      const qrData = (await qrRes.json()) as { qr: string | null };
 
       if (qrData.qr) {
         const dataUrl = await QRCode.toDataURL(qrData.qr, { width: 512, margin: 2 });

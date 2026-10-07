@@ -40,19 +40,19 @@ after running `mise daemon:auth`:
 
 ## mise tasks
 
-| task | what it does |
-|------|--------------|
-| `mise daemon` (alias `mise d`) | start the daemon |
-| `mise daemon:dev` | start the daemon with bun (dev mode) |
-| `mise daemon:build` | compile the standalone binary |
-| `mise daemon:auth` | fresh auth, wipes credentials and shows new QR |
-| `mise daemon:enable` | install as login service (launchd) |
-| `mise daemon:disable` | remove the login service |
-| `mise daemon:logs` | tail logs at `/tmp/whatsapp-bookmark-daemon.log` |
-| `mise install` | install all deps |
-| `mise dev` | raycast dev mode |
-| `mise lint` / `mise lint:fix` | run oxlint |
-| `mise format` / `mise format:check` | run oxfmt |
+| task                                | what it does                                     |
+| ----------------------------------- | ------------------------------------------------ |
+| `mise daemon` (alias `mise d`)      | start the daemon                                 |
+| `mise daemon:dev`                   | start the daemon with bun (dev mode)             |
+| `mise daemon:build`                 | compile the standalone binary                    |
+| `mise daemon:auth`                  | fresh auth, wipes credentials and shows new QR   |
+| `mise daemon:enable`                | install as login service (launchd)               |
+| `mise daemon:disable`               | remove the login service                         |
+| `mise daemon:logs`                  | tail logs at `/tmp/whatsapp-bookmark-daemon.log` |
+| `mise install`                      | install all deps                                 |
+| `mise dev`                          | raycast dev mode                                 |
+| `mise lint` / `mise lint:fix`       | run oxlint                                       |
+| `mise format` / `mise format:check` | run oxfmt                                        |
 
 ## troubleshooting
 
