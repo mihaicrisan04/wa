@@ -1,4 +1,5 @@
 import type { ChatCandidate } from "@wa/sdk";
+import { MediaUnavailableError } from "./whatsapp/media";
 
 export type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 413 | 503;
 
@@ -33,4 +34,23 @@ export function notLinked(): ApiError {
 
 export function tooLarge(message: string): ApiError {
   return new ApiError(413, "too_large", message);
+}
+
+/** Why media can't be served, as the client may hear it; other errors pass through. */
+export function mediaUnavailable(err: unknown): never {
+  if (!(err instanceof MediaUnavailableError)) throw err;
+  switch (err.reason) {
+    case "not_found":
+      throw notFound("media not found");
+    case "not_media":
+      throw new ApiError(404, "not_media", "this message has no media");
+    case "view_once":
+      throw new ApiError(404, "view_once", "view-once media is never downloaded");
+    case "offline":
+      throw new ApiError(
+        503,
+        "offline",
+        "WhatsApp is not connected, media can't be downloaded now",
+      );
+  }
 }

@@ -1,10 +1,10 @@
 import type { MediaInfo, MessageContext, Page, SearchHit } from "@wa/sdk";
 import { Hono } from "hono";
 import { z } from "zod";
-import { ApiError, notFound } from "../../errors";
+import { mediaUnavailable } from "../../errors";
 import { assertCan } from "../../policy";
 import { findMedia, getMessage, searchVisible, toMediaInfo } from "../../queries";
-import { MediaUnavailableError, type CachedMedia } from "../../whatsapp/media";
+import type { CachedMedia } from "../../whatsapp/media";
 import { readContext, type ApiDeps, type AppEnv } from "../context";
 import { flag, limitParam, optionalText, requiredText } from "../params";
 
@@ -48,7 +48,7 @@ export function messageRoutes(deps: ApiDeps) {
       deps.noTimeout?.(c.req.raw);
       const media = await deps.media
         .get({ chatJid: row.chat_jid, id: row.message_id })
-        .catch(mediaError);
+        .catch(mediaUnavailable);
       return new Response(Bun.file(media.path), {
         headers: {
           "content-type": media.mimetype ?? "application/octet-stream",
@@ -57,24 +57,6 @@ export function messageRoutes(deps: ApiDeps) {
         },
       });
     });
-}
-
-function mediaError(err: unknown): never {
-  if (!(err instanceof MediaUnavailableError)) throw err;
-  switch (err.reason) {
-    case "not_found":
-      throw notFound("media not found");
-    case "not_media":
-      throw new ApiError(404, "not_media", "this message has no media");
-    case "view_once":
-      throw new ApiError(404, "view_once", "view-once media is never downloaded");
-    case "offline":
-      throw new ApiError(
-        503,
-        "offline",
-        "WhatsApp is not connected, media can't be downloaded now",
-      );
-  }
 }
 
 /** Sender-controlled names only ever reach this header, ASCII-folded and quoted safely. */

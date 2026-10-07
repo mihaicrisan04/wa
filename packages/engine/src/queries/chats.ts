@@ -87,3 +87,15 @@ function participantsOf(ctx: ReadContext, groupJid: string): Participant[] {
     )
     .all({ groupJid });
 }
+
+/** The display name of a chat the caller already resolved as visible. */
+export function chatName(ctx: ReadContext, jid: string): string | null {
+  return (
+    ctx.store.db
+      .query<{ name: string | null }, { jid: string }>(
+        `SELECT ${CHAT_NAME} AS name FROM chats AS ch LEFT JOIN contacts AS ct ON ct.jid = ch.jid
+         WHERE ch.jid = $jid`,
+      )
+      .get({ jid })?.name ?? null
+  );
+}

@@ -16,6 +16,8 @@ export interface ApiDeps {
   connection: WhatsAppConnection;
   media: MediaCache;
   outbox: Outbox;
+  /** Where MCP `download_media` exports files; `$TMPDIR/wa-export` by default. */
+  exportDir?: string;
   /** Lifts the server's idle timeout for a long response (media downloads). */
   noTimeout?: (request: Request) => void;
 }

@@ -8,6 +8,7 @@
     "./testing": "./src/testing/index.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "^2.3.1",
     "@wa/sdk": "workspace:*",
     "@whiskeysockets/baileys": "7.0.0-rc14",
     "hono": "^4.13.13",
@@ -16,6 +17,8 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@modelcontextprotocol/client": "^2.3.1",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "@types/bun": "1.4.2",
     "typescript": "~5.9.3"
   }
