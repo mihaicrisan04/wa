@@ -80,7 +80,7 @@ export function phoneOf(pnJid: string): string | null {
 }
 
 /** The LID↔PN pair two addresses of the same person form, if they do. */
-function pairOf(a: Jid, b: Jid): LIDMapping | null {
+export function pairOf(a: Jid, b: Jid): LIDMapping | null {
   if (!a || !b) return null;
   const [first, second] = [jidNormalizedUser(a), jidNormalizedUser(b)];
   if (isLidUser(first) && isPnUser(second)) return { lid: first, pn: second };

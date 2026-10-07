@@ -15,6 +15,7 @@ import { applyEditedText, contentTypeOf, textOf, typeName } from "../whatsapp/co
 import { placeholder, revokedMessage, type MessageAction } from "../whatsapp/normalize";
 import { parseRaw, serializeRaw } from "../whatsapp/raw";
 import type { IngestContext } from "./context";
+import { pairOf } from "./lid";
 
 interface Target {
   chatJid: string;
@@ -67,16 +68,23 @@ export function isAuthorized(
 
 /**
  * A copy of a message whose revoke came first is stored as a tombstone when that revoke turns
- * out genuine, so its content is never readable, not even for a moment.
+ * out genuine, so its content is never readable, not even for a moment. One that cannot be
+ * checked until a LID is mapped keeps the copy a placeholder meanwhile.
  */
 export function withPendingRevokes(ctx: IngestContext, record: MessageRecord): MessageRecord {
   if (record.deletedAt !== null || !hasSender(record)) return record;
-  const pending = ctx.store.pendingRevokes.take({ chatJid: record.chatJid, id: record.id });
+  const key = { chatJid: record.chatJid, id: record.id };
+  const pending = ctx.store.pendingRevokes.take(key);
   if (!pending.length) return record;
   const genuine = pending.find((revoke) =>
     isAuthorized(ctx, { type: "revoke", ...revoke }, record),
   );
   if (genuine) return revokedRecord(record, genuine.ts);
+  const undecided = pending.filter((revoke) => addressedApart(revoke.actor.jid, record));
+  if (undecided.length) {
+    for (const revoke of undecided) ctx.store.pendingRevokes.add(key, revoke);
+    return placeholder({ ...record, raw: null });
+  }
   ctx.logger.warn(
     { chat: record.chatJid, id: record.id },
     "dropping a revoke that does not come from the sender",
@@ -149,6 +157,12 @@ function applyRevoke(ctx: IngestContext, row: MessageRow, deletedAt: number): vo
 function awaitSender(ctx: IngestContext, action: Extract<MessageAction, { type: "revoke" }>): void {
   const revoke: PendingRevoke = { actor: action.actor, ts: action.ts };
   ctx.store.pendingRevokes.add({ chatJid: action.chatJid, id: action.targetId }, revoke);
+}
+
+/** An unmapped LID and a PN may be the same person, so the revoke waits for the mapping. */
+function addressedApart(actorJid: string | null, target: Target): boolean {
+  const sender = target.fromMe ? null : target.senderJid;
+  return pairOf(actorJid, sender) !== null;
 }
 
 function hasSender(target: Target): boolean {
