@@ -21,12 +21,8 @@ import { fixtureId, historySet } from "./fixtures";
 
 const silent = pino({ level: "silent" });
 
-export interface FakeIdentity {
-  /** Phone-number jid, e.g. `40700000001:3@s.whatsapp.net`. */
-  id: string;
-  lid?: string;
-  name?: string;
-}
+/** `id` is the phone-number jid, e.g. `40700000001:3@s.whatsapp.net`. */
+export type FakeIdentity = Pick<Contact, "id" | "lid" | "name">;
 
 export interface SentMessage {
   jid: string;
@@ -66,7 +62,7 @@ export function phoneArchive(archive: WAMessage[]): HistoryResponder {
  * In-memory stand-in for Baileys' LID store; only the lookups the engine uses. Like Baileys it
  * keeps users, not jids, and answers with the LID's device on the PN (`<n>:0@s.whatsapp.net`).
  */
-export class FakeLidMapping {
+class FakeLidMapping {
   private readonly pnUserByLidUser = new Map<string, string>();
 
   async storeLIDPNMappings(pairs: LIDMapping[]): Promise<void> {
@@ -88,14 +84,6 @@ export class FakeLidMapping {
     });
     return found.length ? found : null;
   }
-
-  async getLIDForPN(pn: string): Promise<string | null> {
-    const pnUser = jidDecode(pn)?.user;
-    for (const [lidUser, mapped] of this.pnUserByLidUser) {
-      if (mapped === pnUser) return `${lidUser}@lid`;
-    }
-    return null;
-  }
 }
 
 /**
@@ -110,7 +98,7 @@ export class FakeWhatsAppClient implements WhatsAppClient {
   readonly signalRepository = {
     lidMapping: this.lidMapping,
   } as unknown as SignalRepositoryWithLIDStore;
-  user: Contact | undefined;
+  user: FakeIdentity | undefined;
   groups: Record<string, GroupMetadata> = {};
   ended = false;
 
@@ -146,11 +134,11 @@ export class FakeWhatsAppClient implements WhatsAppClient {
 
   /** Emits several events as one buffered batch, the way Baileys does while syncing. */
   emitBatch(events: Partial<BaileysEventMap>): void {
-    this.ev.buffer();
-    for (const [event, data] of Object.entries(events)) {
-      this.ev.emit(event as keyof BaileysEventMap, data as never);
-    }
-    this.ev.flush();
+    this.buffered(() => {
+      for (const [event, data] of Object.entries(events)) {
+        this.ev.emit(event as keyof BaileysEventMap, data as never);
+      }
+    });
   }
 
   /** Emits whatever `work` emits as one buffered batch, so Baileys folds updates into upserts. */
@@ -161,7 +149,7 @@ export class FakeWhatsAppClient implements WhatsAppClient {
   }
 
   /** Simulates a successful (re)connect for an already linked account. */
-  open(identity: FakeIdentity | undefined = this.user as FakeIdentity | undefined): void {
+  open(identity: FakeIdentity | undefined = this.user): void {
     if (identity) {
       this.user = identity;
       this.emit("creds.update", { me: identity });

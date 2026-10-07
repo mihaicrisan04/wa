@@ -41,7 +41,7 @@ export async function startApi(options: StartApiOptions = {}): Promise<ApiHarnes
   let client = new FakeWhatsAppClient();
   const engine = await startEngine(temp.config, {
     client: () => {
-      client = new FakeWhatsAppClient(client.user as never);
+      client = new FakeWhatsAppClient(client.user);
       return client;
     },
     logger: silent,
