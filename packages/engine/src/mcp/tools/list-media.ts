@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { chatName, listMedia, resolveChat, type MediaItem } from "../../queries";
-import { byteSize, chatRef, isoTime, quote } from "../format";
-import { chatInput, chatRefSchema, limitInput, MEDIA_KINDS, mediaSchema } from "../schemas";
+import { chatRefOf, listMedia, mediaListQuery, type MediaItem } from "../../queries";
+import { byteSize, chatRef, isoTime, quote, senderLabel } from "../format";
+import { chatInput, chatRefSchema, mediaItemSchema } from "../schemas";
 import { defineTool } from "../tool";
 
 export const listMediaTool = defineTool({
@@ -12,41 +12,27 @@ export const listMediaTool = defineTool({
   requires: ["media:read"],
   input: z.object({
     chat: chatInput,
-    kind: z.enum(MEDIA_KINDS).optional(),
-    query: z.string().trim().min(1).optional().describe("part of the file name or caption"),
-    limit: limitInput(30, 200),
+    ...mediaListQuery.shape,
+    query: mediaListQuery.shape.query.describe("part of the file name or caption"),
   }),
-  output: z.object({
-    chat: chatRefSchema,
-    media: z.array(
-      mediaSchema.extend({
-        ts: z.number(),
-        fromMe: z.boolean(),
-        sender: z.string().nullable(),
-        senderName: z.string().nullable(),
-        caption: z.string().nullable(),
-      }),
-    ),
-  }),
-  run({ chat: ref, kind, query, limit }, env) {
+  output: z.object({ chat: chatRefSchema, media: z.array(mediaItemSchema) }),
+  run({ chat: ref, ...options }, env) {
     const ctx = env.read();
-    const jid = resolveChat(ctx, ref);
-    const media = listMedia(ctx, jid, { kind, query, limit });
-    const chat = { jid, name: chatName(ctx, jid) };
+    const chat = chatRefOf(ctx, ref);
+    const media = listMedia(ctx, chat.jid, options);
     return {
       lines: [
-        `chat ${chatRef(jid, chat.name)}, newest first:`,
+        `chat ${chatRef(chat.jid, chat.name)}, newest first:`,
         ...(media.length ? media.map(mediaLine) : ["no media found"]),
       ],
       structured: { chat, media },
-      chat: jid,
+      chat: chat.jid,
       count: media.length,
     };
   },
 });
 
 function mediaLine(item: MediaItem): string {
-  const sender = item.fromMe ? "me" : quote(item.senderName ?? item.sender ?? "unknown");
   const details = [
     `id ${quote(item.id)}`,
     quote(item.mimetype ?? "unknown type"),
@@ -54,5 +40,5 @@ function mediaLine(item: MediaItem): string {
   ];
   if (item.fileName) details.push(`file ${quote(item.fileName)}`);
   if (item.caption) details.push(`caption ${quote(item.caption)}`);
-  return `[${isoTime(item.ts)}] ${sender}: ${quote(item.kind)} · ${details.join(" · ")}`;
+  return `[${isoTime(item.ts)}] ${senderLabel(item)}: ${quote(item.kind)} · ${details.join(" · ")}`;
 }

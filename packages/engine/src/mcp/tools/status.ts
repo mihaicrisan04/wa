@@ -1,11 +1,33 @@
-import type { HistoryPhase, HistorySync } from "@wa/sdk";
+import {
+  CONNECTION_STATES,
+  HISTORY_SYNC_STATUSES,
+  phaseSummary,
+  plural,
+  syncSummary,
+  type HistorySync,
+} from "@wa/sdk";
 import { z } from "zod";
 import { readStatus } from "../../queries";
+import { isoTimeOrNever } from "../format";
 import { describeScope, visibleScope } from "../scope";
 import { defineTool } from "../tool";
-import { isoTime } from "../format";
 
-const syncStatus = z.enum(["complete", "paused"]).nullable();
+const syncStatus = z.enum(HISTORY_SYNC_STATUSES).nullable();
+
+const historySchema = z.object({
+  progress: z.number().nullable(),
+  status: syncStatus,
+  updatedAt: z.number().nullable(),
+  phases: z.array(
+    z.object({
+      syncType: z.string(),
+      progress: z.number().nullable(),
+      status: syncStatus,
+      chunks: z.number(),
+      updatedAt: z.number(),
+    }),
+  ),
+}) satisfies z.ZodType<HistorySync>;
 
 export const statusTool = defineTool({
   name: "status",
@@ -15,23 +37,10 @@ export const statusTool = defineTool({
   requires: [],
   input: z.object({}),
   output: z.object({
-    state: z.string(),
+    state: z.enum(CONNECTION_STATES),
     needsLink: z.boolean(),
     me: z.object({ jid: z.string(), lid: z.string().nullable() }).nullable(),
-    history: z.object({
-      progress: z.number().nullable(),
-      status: syncStatus,
-      updatedAt: z.number().nullable(),
-      phases: z.array(
-        z.object({
-          syncType: z.string(),
-          progress: z.number().nullable(),
-          status: syncStatus,
-          chunks: z.number(),
-          updatedAt: z.number(),
-        }),
-      ),
-    }),
+    history: historySchema,
     counts: z.object({ chats: z.number(), messages: z.number() }),
     scope: z.object({ allChats: z.boolean(), collections: z.array(z.string()) }),
   }),
@@ -43,9 +52,9 @@ export const statusTool = defineTool({
       lines: [
         `connection: ${current.state}${current.needsLink ? " (WhatsApp needs to be linked)" : ""}`,
         `linked as: ${current.me?.jid ?? "nobody yet"}`,
-        `history sync: ${describeSync(history)}, last update ${isoTime(history.updatedAt)}`,
+        `history sync: ${syncSummary(history)}, last update ${isoTimeOrNever(history.updatedAt)}`,
         ...(history.phases.length
-          ? [`history phases: ${history.phases.map(describePhase).join(", ")}`]
+          ? [`history phases: ${history.phases.map(phaseSummary).join(", ")}`]
           : []),
         `visible: ${describeScope(scope)}`,
         `visible counts: ${plural(counts.chats, "chat")}, ${plural(counts.messages, "message")}`,
@@ -62,19 +71,3 @@ export const statusTool = defineTool({
     };
   },
 });
-
-function describeSync(history: HistorySync): string {
-  const progress = history.progress === null ? "" : ` (${history.progress}%)`;
-  if (history.status) return `${history.status}${history.status === "paused" ? progress : ""}`;
-  return history.phases.length ? `in progress${progress}` : "not started";
-}
-
-function describePhase(phase: HistoryPhase): string {
-  if (phase.status) return `${phase.syncType} ${phase.status}`;
-  if (phase.progress !== null) return `${phase.syncType} ${phase.progress}%`;
-  return `${phase.syncType} ${plural(phase.chunks, "chunk")}`;
-}
-
-function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? "" : "s"}`;
-}

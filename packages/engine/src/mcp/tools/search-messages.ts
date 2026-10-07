@@ -1,7 +1,8 @@
+import { MESSAGE_TYPES } from "@wa/sdk";
 import { z } from "zod";
-import { searchVisible } from "../../queries";
+import { limitParam, requiredText, searchMessages } from "../../queries";
 import { chatRef, messageLine } from "../format";
-import { chatInput, limitInput, messageSchema, timeInput } from "../schemas";
+import { chatInput, messageSchema, timeInput } from "../schemas";
 import { defineTool } from "../tool";
 
 export const searchMessagesTool = defineTool({
@@ -11,20 +12,20 @@ export const searchMessagesTool = defineTool({
     "Full-text search over the messages this token can see, best matches first. Accents don't matter (`stefan` finds `Ștefan`); the last word matches as a prefix.",
   requires: ["messages:read"],
   input: z.object({
-    query: z.string().trim().min(1).describe("words to find"),
+    query: requiredText.describe("words to find"),
     chat: chatInput.optional(),
-    sender: z.string().trim().min(1).optional().describe("a person's jid, phone number or name"),
+    sender: requiredText.optional().describe("a person's jid, phone number or name"),
     after: timeInput.optional(),
     before: timeInput.optional(),
-    type: z.string().trim().min(1).optional().describe("text, image, video, audio, document, ..."),
-    limit: limitInput(20, 100),
+    type: requiredText.optional().describe(`one of ${MESSAGE_TYPES.join(", ")}, ...`),
+    limit: limitParam(20, 100),
   }),
   output: z.object({
     hits: z.array(z.object({ message: messageSchema, chatName: z.string().nullable() })),
     more: z.boolean(),
   }),
   run({ query, limit, ...filters }, env) {
-    const page = searchVisible(env.read(), { q: query, limit, ...filters });
+    const page = searchMessages(env.read(), { q: query, limit, ...filters });
     const hits = page.items.map(({ message, chatName }) => ({ message, chatName }));
     const lines = hits.length
       ? hits.map(({ message, chatName }) =>
