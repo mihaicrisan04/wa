@@ -1,9 +1,10 @@
 import { proto, type BaileysEventMap } from "@whiskeysockets/baileys";
+import type { Normalized } from "../whatsapp/normalize";
 import { nowSeconds } from "../store";
 import { ingestChat, ingestContact } from "./chats-contacts";
 import type { IngestContext } from "./context";
 import { ingestPastParticipants } from "./groups";
-import { ingestMessages } from "./messages";
+import { storeMessages, type Carriers } from "./messages";
 
 export const HISTORY_PROGRESS_KEY = "history.progress";
 export const HISTORY_STATUS_KEY = "history.status";
@@ -20,16 +21,19 @@ export type HistoryStatus = BaileysEventMap["messaging-history.status"] & { at: 
 
 /**
  * A history chunk, or the whole consolidated first sync. Everything is ingested whatever the
- * sync type; messages come only from `messages` (each chat's own list is truncated).
+ * sync type; messages come only from `messages` (each chat's own list is truncated), passed in
+ * already normalized.
  */
 export function ingestHistory(
   ctx: IngestContext,
   data: BaileysEventMap["messaging-history.set"],
+  messages: Normalized[],
+  carriers: Carriers,
 ): void {
   for (const chat of data.chats) ingestChat(ctx, chat);
   for (const contact of data.contacts) ingestContact(ctx, contact);
   ingestPastParticipants(ctx, data.pastParticipants ?? []);
-  ingestMessages(ctx, data.messages, "history");
+  storeMessages(ctx, messages, carriers);
 
   // on-demand pages answer `wa backfill`; they say nothing about the initial sync
   if (data.syncType === proto.HistorySync.HistorySyncType.ON_DEMAND) return;

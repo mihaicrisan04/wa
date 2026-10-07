@@ -12,20 +12,24 @@ import {
   normalizeMessage,
   placeholder,
   type MessageAction,
+  type Normalized,
 } from "../whatsapp/normalize";
 import { applyAction, isAuthorized } from "./actions";
 import { isolated, type IngestContext } from "./context";
 
-/**
- * Stores a batch of messages, then applies the edits and revokes it carried. Carriers are
- * never stored as rows.
- */
-export function ingestMessages(
+/** Edits and revokes a batch announced through carrier messages. */
+export interface Carriers {
+  actions: MessageAction[];
+  /** Carrier ids of revokes, keyed like `refKey`. */
+  revokeIds: Set<string>;
+}
+
+export function normalizeMessages(
   ctx: IngestContext,
   messages: WAMessage[],
   source: MessageRecord["source"],
-): void {
-  const normalized = messages.flatMap((message) => {
+): Normalized[] {
+  return messages.flatMap((message) => {
     try {
       return [normalizeMessage(message, ctx.identity, source)];
     } catch (err) {
@@ -33,30 +37,41 @@ export function ingestMessages(
       return [];
     }
   });
-  const actions = normalized.flatMap((item) =>
-    item.kind === "carrier" && item.action ? [item.action] : [],
+}
+
+/**
+ * Baileys folds edits and revokes into any buffered message, history included, while the
+ * carrier stays in `messages.upsert`; so carriers are collected from the whole batch.
+ */
+export function carriersOf(...lists: Normalized[][]): Carriers {
+  const actions = lists.flatMap((items) =>
+    items.flatMap((item) => (item.kind === "carrier" && item.action ? [item.action] : [])),
   );
-  const revokeCarriers = new Set(
+  const revokeIds = new Set(
     actions.flatMap((action) =>
       action.type === "revoke" && action.carrierId
         ? [refKey(action.chatJid, action.carrierId)]
         : [],
     ),
   );
+  return { actions, revokeIds };
+}
 
-  for (const item of normalized) {
+/** Stores the storable messages; carriers are never stored as rows. */
+export function storeMessages(ctx: IngestContext, items: Normalized[], carriers: Carriers): void {
+  for (const item of items) {
     if (item.kind !== "message") continue;
-    // Baileys folds a buffered revoke onto its target by overwriting the key with the carrier's
-    if (
-      item.record.deletedAt !== null &&
-      revokeCarriers.has(refKey(item.record.chatJid, item.record.id))
-    )
-      continue;
     const { record, pushName, foldedEdit } = item;
+    // a folded revoke overwrites its target's key with the carrier's, leaving nothing to keep
+    if (record.deletedAt !== null && carriers.revokeIds.has(refKey(record.chatJid, record.id)))
+      continue;
     isolated(ctx, { id: record.id }, () => {
-      writeMessage(ctx, foldedEdit ? checkFoldedEdit(ctx, record, actions) : record, pushName);
+      writeMessage(ctx, foldedEdit ? checkFoldedEdit(ctx, record, carriers) : record, pushName);
     });
   }
+}
+
+export function applyActions(ctx: IngestContext, actions: MessageAction[]): void {
   for (const action of actions)
     isolated(ctx, { id: action.targetId }, () => applyAction(ctx, action));
 }
@@ -93,9 +108,9 @@ export function deleteMessages(ctx: IngestContext, data: BaileysEventMap["messag
 function checkFoldedEdit(
   ctx: IngestContext,
   record: MessageRecord,
-  actions: MessageAction[],
+  carriers: Carriers,
 ): MessageRecord {
-  const carrier = actions.find(
+  const carrier = carriers.actions.find(
     (action) =>
       action.type === "edit" && action.chatJid === record.chatJid && action.targetId === record.id,
   );

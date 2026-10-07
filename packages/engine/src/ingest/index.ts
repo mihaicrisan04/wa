@@ -11,7 +11,14 @@ import type { IngestContext } from "./context";
 import { GroupCache, ingestGroup, ingestParticipantsUpdate } from "./groups";
 import { ingestHistory, recordHistoryStatus } from "./history";
 import { Identity, lookupLids, mappingsIn, unmappedLids, type Batch } from "./lid";
-import { deleteMessages, ingestMessages, ingestMessageUpdates } from "./messages";
+import {
+  applyActions,
+  carriersOf,
+  deleteMessages,
+  ingestMessageUpdates,
+  normalizeMessages,
+  storeMessages,
+} from "./messages";
 
 export interface IngestOptions {
   store: Store;
@@ -91,7 +98,11 @@ export class Ingest {
 /** Order matters: chats and people exist before messages, deletes come last. */
 function apply(ctx: IngestContext, batch: Batch): void {
   const history = batch["messaging-history.set"];
-  if (history) ingestHistory(ctx, history);
+  const historyMessages = normalizeMessages(ctx, history?.messages ?? [], "history");
+  const liveMessages = normalizeMessages(ctx, batch["messages.upsert"]?.messages ?? [], "live");
+  const carriers = carriersOf(historyMessages, liveMessages);
+
+  if (history) ingestHistory(ctx, history, historyMessages, carriers);
   const status = batch["messaging-history.status"];
   if (status) recordHistoryStatus(ctx, status);
 
@@ -104,8 +115,8 @@ function apply(ctx: IngestContext, batch: Batch): void {
   const participants = batch["group-participants.update"];
   if (participants) ingestParticipantsUpdate(ctx, participants);
 
-  const upsert = batch["messages.upsert"];
-  if (upsert) ingestMessages(ctx, upsert.messages, "live");
+  storeMessages(ctx, liveMessages, carriers);
+  applyActions(ctx, carriers.actions);
   ingestMessageUpdates(ctx, batch["messages.update"] ?? []);
 
   const deleted = batch["messages.delete"];

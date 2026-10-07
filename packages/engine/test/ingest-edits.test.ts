@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { proto } from "@whiskeysockets/baileys";
-import { buildMessage, content, keyOf } from "../src/testing";
+import { buildMessage, content, historySet, keyOf } from "../src/testing";
 import {
   ANA_PN,
   BOB_PN,
@@ -150,6 +150,36 @@ describe("edits", () => {
     expect(messageRows(h.store, GROUP)[0]).toMatchObject({ type: "text", text: "v1" });
   });
 
+  test("a spoofed edit folded into a buffered history message drops the forged text", async () => {
+    await h.buffered((client) => {
+      const target = original();
+      client.emit("messaging-history.set", historySet({ messages: [target] }));
+      client.emit("messages.upsert", {
+        messages: [
+          buildMessage({
+            chat: GROUP,
+            participant: EVE_PN,
+            message: content.edit(keyOf(target), "pwned"),
+          }),
+        ],
+        type: "notify",
+      });
+      client.emit("messages.update", [
+        {
+          key: { ...keyOf(target), participant: EVE_PN },
+          update: {
+            message: { editedMessage: { message: { conversation: "pwned" } } },
+            messageTimestamp: 1_700_000_050,
+          },
+        },
+      ]);
+    });
+    expect(messageRows(h.store, GROUP)).toEqual([
+      expect.objectContaining({ id: "3EB0ORIG", type: "placeholder", text: null }),
+    ]);
+    expect(h.store.search("pwned")).toEqual([]);
+  });
+
   test("edits of media replace the caption and keep the media", async () => {
     const image = buildMessage({
       chat: ANA_PN,
@@ -250,6 +280,31 @@ describe("revokes", () => {
         message: content.revoke(keyOf(message)),
       });
       client.emit("messages.upsert", { messages: [message], type: "notify" });
+      client.emit("messages.upsert", { messages: [carrier], type: "notify" });
+      client.emit("messages.update", [
+        {
+          key: { ...keyOf(carrier), id: message.key.id },
+          update: {
+            message: null,
+            messageStubType: proto.WebMessageInfo.StubType.REVOKE,
+            key: keyOf(carrier),
+          },
+        },
+      ]);
+    });
+    expect(count(h.store, "SELECT * FROM messages")).toBe(0);
+    expect(h.store.search("secret")).toEqual([]);
+  });
+
+  test("a revoke Baileys folded into a buffered history message leaves no phantom row", async () => {
+    await h.buffered((client) => {
+      const message = target();
+      const carrier = buildMessage({
+        chat: GROUP,
+        participant: ANA_PN,
+        message: content.revoke(keyOf(message)),
+      });
+      client.emit("messaging-history.set", historySet({ messages: [message] }));
       client.emit("messages.upsert", { messages: [carrier], type: "notify" });
       client.emit("messages.update", [
         {
