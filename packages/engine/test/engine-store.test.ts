@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { initAuthCreds } from "@whiskeysockets/baileys";
 import { startEngine, type Engine } from "../src/engine";
 import {
@@ -90,6 +90,16 @@ describe("engine wiring", () => {
     while (engine.store.messages.get({ chatJid: ANA_PN, id: "3EB0POOF" }) && Date.now() < deadline)
       await Bun.sleep(5);
     expect(engine.store.messages.get({ chatJid: ANA_PN, id: "3EB0POOF" })).toBeNull();
+  });
+
+  test("a purge that fails does not stop the next ones", async () => {
+    const purge = spyOn(engine.store, "purgeExpired").mockImplementationOnce(() => {
+      throw new Error("disk I/O error");
+    });
+    const deadline = Date.now() + 1_000;
+    while (purge.mock.calls.length < 3 && Date.now() < deadline) await Bun.sleep(5);
+    expect(purge.mock.calls.length).toBeGreaterThanOrEqual(3);
+    purge.mockRestore();
   });
 });
 

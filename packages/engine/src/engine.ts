@@ -59,6 +59,15 @@ const PURGE_INTERVAL_MS = 60_000;
 // Bun's 128 MB default would cut file uploads off mid-stream; leave room for the multipart fields
 const MAX_REQUEST_BYTES = MAX_UPLOAD_BYTES + 1024 * 1024;
 
+/** The long-lived parts of a running engine. */
+type Services = Pick<Engine, "store" | "ingest" | "connection" | "media" | "outbox" | "backfills">;
+
+/** Filled in once listening; the apps read them lazily. */
+interface Listeners {
+  tcp: Server<undefined> | null;
+  admin: Server<undefined> | null;
+}
+
 export async function startEngine(
   config: EngineConfig,
   options: StartEngineOptions = {},
@@ -70,6 +79,55 @@ export async function startEngine(
   await claimSocket(adminSocket);
 
   const logger = options.logger ?? createLogger(config.logLevel);
+  const services = createServices(config, options, logger);
+  const stopPurging = purgeEvery(options.purgeIntervalMs ?? PURGE_INTERVAL_MS, services, logger);
+  const listeners: Listeners = { tcp: null, admin: null };
+  const apps = createApps(config, services, listeners, logger, options.exportDir);
+
+  const stop = async () => {
+    stopPurging();
+    await services.backfills.stop();
+    await services.connection.stop();
+    await services.outbox.stop();
+    await listeners.tcp?.stop(true);
+    if (listeners.admin) {
+      await listeners.admin.stop(true);
+      await rm(adminSocket, { force: true });
+    }
+    await services.ingest.drain();
+    services.store.close();
+  };
+
+  try {
+    await ensureRaycastAccess(services.store, config.home);
+    listeners.admin = await listenOnSocket(adminSocket, apps.admin.fetch);
+    listeners.tcp = Bun.serve({
+      hostname: config.host,
+      port: config.port,
+      fetch: apps.tcp.fetch,
+      maxRequestBodySize: MAX_REQUEST_BYTES,
+    });
+    logger.info({ port: listeners.tcp.port }, "wa engine listening");
+    await services.connection.start();
+  } catch (err) {
+    await stop();
+    throw err;
+  }
+
+  return {
+    ...services,
+    port: listeners.tcp.port ?? config.port,
+    socketPath: adminSocket,
+    apps,
+    stop,
+  };
+}
+
+function createServices(
+  config: EngineConfig,
+  options: StartEngineOptions,
+  logger: Logger,
+): Services {
   const store = openStore(databasePath(config.home));
   const ingest: Ingest = new Ingest({ store, logger, me: () => connection.me() });
   const hooks: SocketHooks = {
@@ -108,79 +166,41 @@ export async function startEngine(
     client: connectedClient,
     timeoutMs: options.backfillTimeoutMs,
   });
+  return { store, ingest, connection, media, outbox, backfills };
+}
 
-  const purge = setInterval(() => {
-    void removeFiles(store.purgeExpired(), logger).catch((err: unknown) => {
-      logger.error({ err }, "could not purge disappearing messages");
-    });
-    void outbox.expire();
-  }, options.purgeIntervalMs ?? PURGE_INTERVAL_MS);
-
-  let server: Server<undefined> | null = null;
-  let adminServer: Server<undefined> | null = null;
-  const deps: ApiDeps = {
-    version: ENGINE_VERSION,
-    logger,
-    store,
-    connection,
-    media,
-    outbox,
-    backfills,
-    exportDir: options.exportDir,
-  };
-  const apps = {
+function createApps(
+  config: EngineConfig,
+  services: Services,
+  listeners: Listeners,
+  logger: Logger,
+  exportDir: string | undefined,
+): Engine["apps"] {
+  const deps: ApiDeps = { ...services, version: ENGINE_VERSION, logger, exportDir };
+  return {
     tcp: createApp(
-      { ...deps, noTimeout: (request) => server?.timeout(request, 0) },
-      { kind: "tcp", port: () => server?.port ?? config.port },
+      { ...deps, noTimeout: (request) => listeners.tcp?.timeout(request, 0) },
+      { kind: "tcp", port: () => listeners.tcp?.port ?? config.port },
     ),
     admin: createApp(
-      { ...deps, noTimeout: (request) => adminServer?.timeout(request, 0) },
+      { ...deps, noTimeout: (request) => listeners.admin?.timeout(request, 0) },
       { kind: "unix" },
     ),
   };
+}
 
-  const stop = async () => {
-    clearInterval(purge);
-    await backfills.stop();
-    await connection.stop();
-    await outbox.stop();
-    await server?.stop(true);
-    if (adminServer) {
-      await adminServer.stop(true);
-      await rm(adminSocket, { force: true });
+/** Purges expired disappearing messages and queued sends on a timer; returns how to stop it. */
+function purgeEvery(intervalMs: number, { store, outbox }: Services, logger: Logger): () => void {
+  const purge = async () => {
+    try {
+      await removeFiles(store.purgeExpired(), logger);
+      await outbox.expire();
+    } catch (err) {
+      logger.error({ err }, "could not purge expired messages");
     }
-    await ingest.drain();
-    store.close();
   };
-
-  try {
-    await ensureRaycastAccess(store, config.home);
-    adminServer = await listenOnSocket(adminSocket, apps.admin.fetch);
-    server = Bun.serve({
-      hostname: config.host,
-      port: config.port,
-      fetch: apps.tcp.fetch,
-      maxRequestBodySize: MAX_REQUEST_BYTES,
-    });
-    logger.info({ port: server.port }, "wa engine listening");
-    await connection.start();
-  } catch (err) {
-    await stop();
-    throw err;
-  }
-
-  return {
-    port: server.port ?? config.port,
-    socketPath: adminSocket,
-    connection,
-    store,
-    ingest,
-    media,
-    outbox,
-    backfills,
-    apps,
-    stop,
-  };
+  const timer = setInterval(() => void purge(), intervalMs);
+  return () => clearInterval(timer);
 }
 
 function toFactory(client: StartEngineOptions["client"]): ClientFactory | undefined {
