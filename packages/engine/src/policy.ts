@@ -75,8 +75,9 @@ export function collectionSql(column: string, collection: string): SqlFragment {
 }
 
 export function and(...fragments: SqlFragment[]): SqlFragment {
+  if (!fragments.length) return TRUE;
   return {
-    sql: fragments.map((fragment) => `(${fragment.sql})`).join(" AND ") || "1",
+    sql: fragments.map((fragment) => `(${fragment.sql})`).join(" AND "),
     params: Object.assign({}, ...fragments.map((fragment) => fragment.params)),
   };
 }
