@@ -4,7 +4,7 @@ import { and, type SqlFragment } from "../policy";
 import { decodeCursor, encodeCursor, parseTime } from "./cursor";
 import { messagesByRowid, visibleMessages } from "./messages";
 import { resolveChat, resolveSender } from "./resolve";
-import type { ReadContext } from "./rows";
+import { CHAT_NAME, type ReadContext } from "./rows";
 
 export interface SearchQueryOptions {
   q: string;
@@ -51,11 +51,32 @@ export function searchVisible(ctx: ReadContext, options: SearchQueryOptions): Pa
     ctx,
     page.map((hit) => hit.rowid),
   );
+  const chatNames = namesOf(ctx, [...new Set(page.map((hit) => hit.chat_jid))]);
   return {
     items: page.flatMap((hit) => {
       const message = messages.get(hit.rowid);
-      return message ? [{ message, snippet: hit.snippet, rank: hit.rank }] : [];
+      if (!message) return [];
+      return [
+        {
+          message,
+          chatName: chatNames.get(hit.chat_jid) ?? null,
+          snippet: hit.snippet,
+          rank: hit.rank,
+        },
+      ];
     }),
     nextCursor: hits.length > options.limit ? encodeCursor([offset + options.limit]) : null,
   };
+}
+
+/** Display names of chats the hits already proved visible. */
+function namesOf(ctx: ReadContext, jids: string[]): Map<string, string | null> {
+  const rows = ctx.store.db
+    .query<{ jid: string; name: string | null }, { jids: string }>(
+      `SELECT ch.jid, ${CHAT_NAME} AS name
+       FROM chats AS ch LEFT JOIN contacts AS ct ON ct.jid = ch.jid
+       WHERE ch.jid IN (SELECT value FROM json_each($jids))`,
+    )
+    .all({ jids: JSON.stringify(jids) });
+  return new Map(rows.map((row) => [row.jid, row.name]));
 }

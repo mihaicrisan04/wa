@@ -141,6 +141,7 @@ export interface MessageContext {
 
 export interface SearchHit {
   message: Message;
+  chatName: string | null;
   /** Matched terms are wrapped in `SNIPPET_OPEN` / `SNIPPET_CLOSE`. */
   snippet: string;
   rank: number;
