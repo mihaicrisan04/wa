@@ -1,104 +1,69 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { createLogger, startEngine, type Engine } from "@wa/engine";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import {
+  ANA_PN,
   buildMessage,
   content,
-  FakeWhatsAppClient,
+  eventually,
   historySet,
   HistorySyncType,
-  makeTempHome,
+  ME,
   phoneArchive,
-  type TempHome,
+  startApi,
+  type ApiHarness,
 } from "@wa/engine/testing";
-import { runCli } from "../src/cli";
+import { run as runWa, type CliRun } from "./support";
 
-const ME = { id: "40700000001:7@s.whatsapp.net", lid: "100000000000001:7@lid" };
-const ANA = "40700000002@s.whatsapp.net";
 const NEWEST = 1_700_000_000;
 
-let temp: TempHome;
-let engine: Engine;
-let client: FakeWhatsAppClient;
-let env: Record<string, string>;
+let api: ApiHarness;
 
 beforeEach(async () => {
-  temp = await makeTempHome();
-  env = { WA_HOME: temp.home };
-  engine = await startEngine(temp.config, {
-    client: () => (client = new FakeWhatsAppClient(client?.user)),
-    logger: createLogger("silent"),
-    backfillTimeoutMs: 100,
-  });
+  api = await startApi({ linked: false, engine: { backfillTimeoutMs: 100 } });
 });
 
-afterEach(async () => {
-  await engine.stop();
-  await temp.cleanup();
-});
+afterEach(() => api.stop());
 
-async function run(argv: string[], historyIdleMs = 5_000) {
-  const out: string[] = [];
-  const err: string[] = [];
-  const code = await runCli(argv, {
-    out: (line) => out.push(line),
-    err: (line) => err.push(line),
-    env,
-    pollMs: 5,
-    historyIdleMs,
-  });
-  return { code, out: out.join("\n"), err: err.join("\n") };
-}
+const run = (argv: string[], historyIdleMs = 5_000) =>
+  runWa(argv, { env: { WA_HOME: api.temp.home }, historyIdleMs });
 
 /** Pairs and opens the fake socket once `wa link` is waiting for the scan. */
 async function scanQr() {
-  while (engine.connection.status().state !== "linking") await Bun.sleep(2);
-  client.pair(ME);
-  await client.idle();
-  client.open();
-  await client.idle();
-}
-
-async function emit(events: Parameters<FakeWhatsAppClient["emitBatch"]>[0]) {
-  client.emitBatch(events);
-  await client.idle();
-  await engine.ingest.drain();
+  await eventually(
+    () => api.engine.connection.status().state === "linking",
+    "wa link to start pairing",
+  );
+  api.client().pair(ME);
+  await api.client().idle();
+  api.client().open();
+  await api.client().idle();
 }
 
 /** Waits until `wa link` has printed `text`. */
-async function printed(lines: () => string, text: string) {
-  while (!lines().includes(text)) await Bun.sleep(2);
-}
+const printed = (linking: CliRun, text: string) =>
+  eventually(() => linking.printed().includes(text), `wa link to print "${text}"`);
 
 describe("wa link", () => {
   test("follows the history sync until the full sync is done", async () => {
-    const out: string[] = [];
-    let finished = false;
-    const linking = runCli(["link"], {
-      out: (line) => out.push(line),
-      err: (line) => out.push(line),
-      env,
-      pollMs: 5,
-      historyIdleMs: 5_000,
-    }).finally(() => (finished = true));
+    const linking = run(["link"]);
     await scanQr();
-    await printed(() => out.join("\n"), "history: waiting for the phone");
+    await printed(linking, "history: waiting for the phone");
 
-    await emit({
+    await api.emit({
       "messaging-history.status": {
         syncType: HistorySyncType.INITIAL_BOOTSTRAP,
         status: "complete",
         explicit: true,
       },
     });
-    await emit({
+    await api.emit({
       "messaging-history.set": historySet({
         syncType: HistorySyncType.RECENT,
         progress: 40,
-        messages: [buildMessage({ chat: ANA, ts: NEWEST })],
+        messages: [buildMessage({ chat: ANA_PN, ts: NEWEST })],
       }),
     });
-    await printed(() => out.join("\n"), "history: in progress (40%), 1 message stored");
-    await emit({
+    await printed(linking, "history: in progress (40%), 1 message stored");
+    await api.emit({
       "messaging-history.status": {
         syncType: HistorySyncType.RECENT,
         status: "complete",
@@ -106,16 +71,18 @@ describe("wa link", () => {
       },
     });
     // the full sync comes after recent
-    await Bun.sleep(30);
-    expect(finished).toBe(false);
-    await emit({
+    const statusReads = spyOn(api.engine.connection, "status");
+    await eventually(() => statusReads.mock.calls.length >= 2, "wa link to poll the status again");
+    statusReads.mockRestore();
+    expect(linking.finished()).toBe(false);
+    await api.emit({
       "messaging-history.set": historySet({ syncType: HistorySyncType.FULL, progress: 100 }),
     });
 
-    expect(await linking).toBe(0);
-    const text = out.join("\n");
-    expect(text).toContain("linked as +40700000001");
-    expect(text).toContain("history sync complete: 1 chat, 1 message stored");
+    const result = await linking;
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("linked as +40700000001");
+    expect(result.out).toContain("history sync complete: 1 chat, 1 message stored");
 
     const status = await run(["status"]);
     expect(status.out).toMatch(/history\s+complete/);
@@ -133,9 +100,9 @@ describe("wa link", () => {
 
     const relinking = run(["link", "--relink"]);
     await scanQr();
-    await Bun.sleep(20);
-    client.close(401);
-    await client.idle();
+    await printed(relinking, "syncing history from your phone");
+    api.client().close(401);
+    await api.client().idle();
     const dropped = await relinking;
     expect(dropped.code).toBe(1);
     expect(dropped.err).toContain("the connection is needs_link, the history sync stopped");
@@ -147,18 +114,20 @@ describe("wa backfill", () => {
     const linking = run(["link"], 1);
     await scanQr();
     await linking;
-    await emit({
-      "contacts.upsert": [{ id: ANA, name: "Ana" }],
+    await api.emit({
+      "contacts.upsert": [{ id: ANA_PN, name: "Ana" }],
       "messages.upsert": {
         type: "notify",
-        messages: [buildMessage({ chat: ANA, ts: NEWEST, message: content.text("hi") })],
+        messages: [buildMessage({ chat: ANA_PN, ts: NEWEST, message: content.text("hi") })],
       },
     });
   });
 
   test("pages back and reports how far it got", async () => {
-    client.answerHistory = phoneArchive(
-      Array.from({ length: 70 }, (_, i) => buildMessage({ chat: ANA, ts: NEWEST - 60 * (i + 1) })),
+    api.client().answerHistory = phoneArchive(
+      Array.from({ length: 70 }, (_, i) =>
+        buildMessage({ chat: ANA_PN, ts: NEWEST - 60 * (i + 1) }),
+      ),
     );
     const capped = await run(["backfill", "Ana", "--max", "60"]);
     expect(capped.code).toBe(0);
@@ -174,7 +143,7 @@ describe("wa backfill", () => {
     expect(silent.code).toBe(0);
     expect(silent.out).toContain("fetched 0 older messages; the phone stopped answering");
 
-    await emit({ "chats.upsert": [{ id: "120363000000000009@g.us", name: "Empty group" }] });
+    await api.emit({ "chats.upsert": [{ id: "120363000000000009@g.us", name: "Empty group" }] });
     const empty = await run(["backfill", "Empty group"]);
     expect(empty.code).toBe(1);
     expect(empty.err).toContain("nothing stored in this chat yet");

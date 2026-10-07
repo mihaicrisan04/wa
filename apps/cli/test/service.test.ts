@@ -2,27 +2,16 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runCli } from "../src/cli";
 import { spawnExec, type Exec, type ExecResult } from "../src/exec";
 import { SERVICE_LABEL, parseLaunchctlPrint, servicePlist } from "../src/service/launchd";
+import { OK, recorder, run as runWa } from "./support";
 
-const OK: ExecResult = { code: 0, stdout: "", stderr: "" };
 const FAILED: ExecResult = {
   code: 5,
   stdout: "",
   stderr: "Bootstrap failed: 5: Input/output error",
 };
 const UID = process.getuid!();
-
-/** Records every external program call (launchctl, tmutil) and answers from `replies`. */
-function recorder(replies: Partial<Record<string, ExecResult[]>> = {}) {
-  const calls: string[][] = [];
-  const exec: Exec = async (argv) => {
-    calls.push(argv);
-    return replies[`${argv[0]} ${argv[1]}`]?.shift() ?? OK;
-  };
-  return { calls, exec };
-}
 
 let root: string;
 let userHome: string;
@@ -47,15 +36,11 @@ interface RunOptions {
   cwd?: string;
 }
 
-async function run(
+function run(
   argv: string[],
   { env = { WA_HOME: waHome }, exec = recorder().exec, waCommand = [binary], cwd }: RunOptions = {},
 ) {
-  const out: string[] = [];
-  const err: string[] = [];
-  const code = await runCli(["service", ...argv], {
-    out: (line) => out.push(line),
-    err: (line) => err.push(line),
+  return runWa(["service", ...argv], {
     env,
     exec,
     waCommand,
@@ -63,16 +48,22 @@ async function run(
     pollMs: 1,
     cwd,
   });
-  return { code, out: out.join("\n"), err: err.join("\n") };
 }
 
 const plistPath = () => join(userHome, "Library", "LaunchAgents", `${SERVICE_LABEL}.plist`);
 const installedBinary = () => join(userHome, ".local", "bin", "wa");
 const logFile = () => join(userHome, "Library", "Logs", "wa", "engine.log");
 
+/** The installed plist as plutil reads it, so its layout doesn't matter. */
+function installedPlist(): Record<string, unknown> {
+  const json = Bun.spawnSync(["plutil", "-convert", "json", "-o", "-", plistPath()]);
+  expect(json.exitCode).toBe(0);
+  return JSON.parse(json.stdout.toString()) as Record<string, unknown>;
+}
+
 describe("wa service install", () => {
   test("copies the binary, writes the plist, excludes auth from backups, reloads launchd", async () => {
-    const { calls, exec } = recorder();
+    const { argvs, exec } = recorder();
     const result = await run(["install"], { exec });
     expect(result.code).toBe(0);
     expect(result.out).toContain(`installed wa`);
@@ -82,7 +73,7 @@ describe("wa service install", () => {
     expect((await stat(join(waHome, "auth"))).mode & 0o777).toBe(0o700);
     expect((await stat(plistPath())).mode & 0o777).toBe(0o644);
 
-    expect(calls).toEqual([
+    expect(argvs()).toEqual([
       ["tmutil", "addexclusion", join(waHome, "auth")],
       ["launchctl", "bootout", `gui/${UID}/${SERVICE_LABEL}`],
       ["launchctl", "bootstrap", `gui/${UID}`, plistPath()],
@@ -91,39 +82,32 @@ describe("wa service install", () => {
 
   test("the plist runs `wa serve` at login with KeepAlive, umask 077 and the log file", async () => {
     await run(["install"], { env: { WA_HOME: waHome, WA_PORT: "7400" } });
-    const plist = await readFile(plistPath(), "utf8");
-    const escaped = (path: string) => path.replaceAll("&", "&amp;");
-
-    expect(plist).toContain(`<key>Label</key>\n  <string>${SERVICE_LABEL}</string>`);
-    expect(plist).toContain(
-      `<array>\n    <string>${escaped(installedBinary())}</string>\n    <string>serve</string>\n  </array>`,
-    );
-    expect(plist).toContain("<key>RunAtLoad</key>\n  <true/>");
-    expect(plist).toContain("<key>KeepAlive</key>\n  <true/>");
-    expect(plist).toContain("<key>Umask</key>\n  <integer>63</integer>");
-    expect(plist).toContain(`<key>StandardOutPath</key>\n  <string>${escaped(logFile())}</string>`);
-    expect(plist).toContain(
-      `<key>StandardErrorPath</key>\n  <string>${escaped(logFile())}</string>`,
-    );
-    expect(plist).toContain(`<key>WA_HOME</key>\n    <string>${waHome}</string>`);
-    expect(plist).toContain(`<key>WA_PORT</key>\n    <string>7400</string>`);
-    expect(plist).not.toContain("WA_LOG_LEVEL");
-    expect(plist).not.toContain("home & co");
+    expect(installedPlist()).toEqual({
+      Label: SERVICE_LABEL,
+      ProgramArguments: [installedBinary(), "serve"],
+      EnvironmentVariables: { WA_HOME: waHome, WA_PORT: "7400" },
+      RunAtLoad: true,
+      KeepAlive: true,
+      Umask: 0o077,
+      StandardOutPath: logFile(),
+      StandardErrorPath: logFile(),
+    });
   });
 
   test("a relative WA_HOME is pinned as an absolute path, since launchd starts in /", async () => {
-    const { calls, exec } = recorder();
+    const { argvs, exec } = recorder();
     const result = await run(["install"], {
       env: { WA_HOME: "data", WA_PORT: "07400", WA_LOG_LEVEL: "debug" },
       exec,
       cwd: root,
     });
     expect(result.code).toBe(0);
-    expect(calls[0]).toEqual(["tmutil", "addexclusion", join(root, "data", "auth")]);
-    const plist = await readFile(plistPath(), "utf8");
-    expect(plist).toContain(`<key>WA_HOME</key>\n    <string>${join(root, "data")}</string>`);
-    expect(plist).toContain(`<key>WA_PORT</key>\n    <string>7400</string>`);
-    expect(plist).toContain(`<key>WA_LOG_LEVEL</key>\n    <string>debug</string>`);
+    expect(argvs()[0]).toEqual(["tmutil", "addexclusion", join(root, "data", "auth")]);
+    expect(installedPlist().EnvironmentVariables).toEqual({
+      WA_HOME: join(root, "data"),
+      WA_PORT: "7400",
+      WA_LOG_LEVEL: "debug",
+    });
     expect(result.out).toContain(join(root, "data"));
   });
 
@@ -134,19 +118,19 @@ describe("wa service install", () => {
   });
 
   test("without WA_HOME the data dir defaults under the user's home and no env is pinned", async () => {
-    const { calls, exec } = recorder();
+    const { argvs, exec } = recorder();
     await run(["install"], { env: {}, exec });
     const defaultAuth = join(userHome, "Library", "Application Support", "wa", "auth");
-    expect(calls[0]).toEqual(["tmutil", "addexclusion", defaultAuth]);
-    expect(await readFile(plistPath(), "utf8")).not.toContain("EnvironmentVariables");
+    expect(argvs()[0]).toEqual(["tmutil", "addexclusion", defaultAuth]);
+    expect(installedPlist()).not.toHaveProperty("EnvironmentVariables");
   });
 
   test("refuses to install when running from source", async () => {
-    const { calls, exec } = recorder();
+    const { argvs, exec } = recorder();
     const result = await run(["install"], { exec, waCommand: ["/usr/bin/bun", "index.ts"] });
     expect(result.code).toBe(1);
     expect(result.err).toContain("compiled binary");
-    expect(calls).toEqual([]);
+    expect(argvs()).toEqual([]);
     expect(await stat(plistPath()).catch(() => null)).toBeNull();
   });
 
@@ -160,7 +144,7 @@ describe("wa service install", () => {
   test("retries a bootstrap that races the bootout, then gives up", async () => {
     const retried = recorder({ "launchctl bootstrap": [FAILED] });
     expect((await run(["install"], { exec: retried.exec })).code).toBe(0);
-    expect(retried.calls.filter((argv) => argv[1] === "bootstrap")).toHaveLength(2);
+    expect(retried.argvs().filter((argv) => argv[1] === "bootstrap")).toHaveLength(2);
 
     const failing = recorder({ "launchctl bootstrap": Array(5).fill(FAILED) });
     const result = await run(["install"], { exec: failing.exec });
@@ -185,10 +169,10 @@ describe("wa service install", () => {
 describe("wa service uninstall", () => {
   test("boots the agent out and removes the plist, keeping the binary and data", async () => {
     await run(["install"]);
-    const { calls, exec } = recorder();
+    const { argvs, exec } = recorder();
     const result = await run(["uninstall"], { exec });
     expect(result.code).toBe(0);
-    expect(calls).toEqual([["launchctl", "bootout", `gui/${UID}/${SERVICE_LABEL}`]]);
+    expect(argvs()).toEqual([["launchctl", "bootout", `gui/${UID}/${SERVICE_LABEL}`]]);
     expect(await stat(plistPath()).catch(() => null)).toBeNull();
     expect(await stat(installedBinary())).toBeTruthy();
     expect(result.out).toContain(`kept ${installedBinary()}`);
@@ -208,18 +192,18 @@ const PRINTED = `gui/${UID}/${SERVICE_LABEL} = {
 
 describe("wa service status", () => {
   test("not installed exits 1 without asking launchd", async () => {
-    const { calls, exec } = recorder();
+    const { argvs, exec } = recorder();
     const result = await run(["status"], { exec });
     expect(result).toMatchObject({ code: 1, out: "not installed (wa service install)" });
-    expect(calls).toEqual([]);
+    expect(argvs()).toEqual([]);
   });
 
   test("shows state and pid from launchctl print", async () => {
     await run(["install"]);
-    const { calls, exec } = recorder({ "launchctl print": [{ ...OK, stdout: PRINTED }] });
+    const { argvs, exec } = recorder({ "launchctl print": [{ ...OK, stdout: PRINTED }] });
     const result = await run(["status"], { exec });
     expect(result.code).toBe(0);
-    expect(calls).toEqual([["launchctl", "print", `gui/${UID}/${SERVICE_LABEL}`]]);
+    expect(argvs()).toEqual([["launchctl", "print", `gui/${UID}/${SERVICE_LABEL}`]]);
     expect(result.out).toMatch(/state +running/);
     expect(result.out).toMatch(/pid +4242/);
     expect(result.out).toMatch(/last exit +\(never exited\)/);

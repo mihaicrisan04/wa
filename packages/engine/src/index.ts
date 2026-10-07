@@ -1,6 +1,7 @@
 export {
   ConfigError,
   ENGINE_VERSION,
+  databasePath,
   defaultHome,
   loadConfig,
   socketPath,

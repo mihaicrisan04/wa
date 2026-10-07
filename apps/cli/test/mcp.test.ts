@@ -1,13 +1,13 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createLogger, startEngine, type Engine } from "@wa/engine";
-import { FakeWhatsAppClient, makeTempHome, type TempHome } from "@wa/engine/testing";
-import { runCli } from "../src/cli";
-import type { Exec, ExecResult } from "../src/exec";
+import { mcpToolsListRequest, startApi, type ApiHarness } from "@wa/engine/testing";
+import type { CommandIO } from "../src/command";
+import type { ExecResult } from "../src/exec";
 import { addHeaderCommand, addJsonCommand, removeCommand } from "../src/mcp/claude";
-import { projectKey } from "../src/mcp/token-file";
+import { mcpTokenPath, projectKey } from "../src/mcp/token-file";
+import { OK, recorder, run as runWa } from "./support";
 
 const WA = ["/opt/wa tools/bin/wa"];
 const NOT_FOUND: ExecResult = {
@@ -15,39 +15,12 @@ const NOT_FOUND: ExecResult = {
   stdout: "",
   stderr: 'No MCP server named "wa" in local scope',
 };
-const OK: ExecResult = { code: 0, stdout: "", stderr: "" };
 
-interface Call {
-  argv: string[];
-  cwd: string;
-}
+const run = (argv: string[], env: CommandIO["env"], io: Partial<CommandIO> = {}) =>
+  runWa(argv, { env, waCommand: WA, ...io });
 
-/** Records every `claude` call and answers from `replies` (then OK). */
-function recorder(replies: ExecResult[] = []) {
-  const calls: Call[] = [];
-  const exec: Exec = async (argv, { cwd }) => {
-    calls.push({ argv, cwd });
-    return replies.shift() ?? OK;
-  };
-  return { calls, exec };
-}
-
-async function run(
-  argv: string[],
-  env: Record<string, string | undefined>,
-  extra: { exec?: Exec; cwd?: string } = {},
-) {
-  const out: string[] = [];
-  const err: string[] = [];
-  const code = await runCli(argv, {
-    out: (line) => out.push(line),
-    err: (line) => err.push(line),
-    env,
-    waCommand: WA,
-    ...extra,
-  });
-  return { code, out: out.join("\n"), err: err.join("\n") };
-}
+/** Answers the `claude mcp ...` calls in order. */
+const claude = (...replies: ExecResult[]) => recorder({ "claude mcp": replies });
 
 describe("arguments", () => {
   const env = { WA_HOME: "/nonexistent/wa" };
@@ -96,33 +69,19 @@ describe("claude commands", () => {
 });
 
 describe("against a running engine", () => {
-  let temp: TempHome;
-  let engine: Engine;
+  let api: ApiHarness;
   let env: Record<string, string>;
   let project: string;
 
   const homeRules = async () =>
-    [...new Set([temp.home, await realpath(temp.home)])].map((home) => `Read(/${home}/**)`);
-  const tokenPath = (suffix: string) => join(temp.home, "tokens", `mcp-master-${suffix}.token`);
-  const listTools = async (token: string) =>
-    fetch(`http://127.0.0.1:${engine.port}/mcp`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        accept: "application/json, text/event-stream",
-      },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
-    });
+    [...new Set([api.temp.home, await realpath(api.temp.home)])].map((home) => `Read(/${home}/**)`);
+  const tokenPath = (suffix: string) => mcpTokenPath(api.temp.home, "master", suffix);
+  const listTools = (token: string) => api.http("/mcp", token, mcpToolsListRequest);
 
   beforeAll(async () => {
-    temp = await makeTempHome();
-    engine = await startEngine(temp.config, {
-      client: () => new FakeWhatsAppClient(),
-      logger: createLogger("silent"),
-    });
-    env = { WA_HOME: temp.home, WA_PORT: "7399" };
-    engine.store.profiles.create({
+    api = await startApi({ linked: false });
+    env = { WA_HOME: api.temp.home, WA_PORT: "7399" };
+    api.engine.store.profiles.create({
       name: "master",
       capabilities: ["chats:read", "messages:read"],
       allChats: false,
@@ -134,10 +93,8 @@ describe("against a running engine", () => {
     project = await realpath(await mkdtemp(join(tmpdir(), "wa project ")));
   });
 
-  afterAll(async () => {
-    await engine.stop();
-    await temp.cleanup();
-  });
+  afterEach(() => rm(project, { recursive: true, force: true }));
+  afterAll(() => api.stop());
 
   test("install for Claude: token file, remove-then-add with headersHelper, deny rule", async () => {
     await mkdir(join(project, ".claude"));
@@ -145,7 +102,7 @@ describe("against a running engine", () => {
       join(project, ".claude", "settings.local.json"),
       JSON.stringify({ permissions: { allow: ["Bash(ls)"], deny: ["Read(./.env)"] }, model: "x" }),
     );
-    const { calls, exec } = recorder([NOT_FOUND]);
+    const { calls, exec } = claude(NOT_FOUND);
     const result = await run(["mcp", "install", "--profile", "master", "--project", project], env, {
       exec,
     });
@@ -171,17 +128,16 @@ describe("against a running engine", () => {
       permissions: { allow: ["Bash(ls)"], deny: ["Read(./.env)", ...(await homeRules())] },
       model: "x",
     });
-    await rm(project, { recursive: true, force: true });
   });
 
   test("installing again revokes the previous token of that project", async () => {
-    const first = recorder();
+    const first = claude();
     await run(["mcp", "install", "--profile", "master"], env, { exec: first.exec, cwd: project });
     const file = tokenPath(projectKey(project));
     const old = (await readFile(file, "utf8")).trim();
     expect((await listTools(old)).status).toBe(200);
 
-    const second = recorder();
+    const second = claude();
     const again = await run(["mcp", "install", "--profile", "master", "--project", project], env, {
       exec: second.exec,
     });
@@ -193,31 +149,30 @@ describe("against a running engine", () => {
 
     const settings = await readFile(join(project, ".claude", "settings.local.json"), "utf8");
     expect(JSON.parse(settings).permissions.deny).toEqual(await homeRules());
-    await rm(project, { recursive: true, force: true });
   });
 
   test("falls back to a static header when add-json refuses the headersHelper key", async () => {
-    const { calls, exec } = recorder([
-      OK,
-      { code: 1, stdout: "", stderr: 'Invalid configuration: Unrecognized key: "headersHelper"' },
-    ]);
+    const { argvs, exec } = claude(OK, {
+      code: 1,
+      stdout: "",
+      stderr: 'Invalid configuration: Unrecognized key: "headersHelper"',
+    });
     const result = await run(["mcp", "install", "--profile", "master", "--project", project], env, {
       exec,
     });
     expect(result.code).toBe(0);
     expect(result.err).toContain("no headersHelper");
     const token = (await readFile(tokenPath(projectKey(project)), "utf8")).trim();
-    expect(calls.map((call) => call.argv.slice(0, 3))).toEqual([
+    expect(argvs().map((argv) => argv.slice(0, 3))).toEqual([
       ["claude", "mcp", "remove"],
       ["claude", "mcp", "add-json"],
       ["claude", "mcp", "add"],
     ]);
-    expect(calls[2]!.argv).toEqual(addHeaderCommand("http://127.0.0.1:7399/mcp", token));
-    await rm(project, { recursive: true, force: true });
+    expect(argvs()[2]).toEqual(addHeaderCommand("http://127.0.0.1:7399/mcp", token));
   });
 
   test("any other add-json failure stops the install without storing the token in Claude's config", async () => {
-    const { calls, exec } = recorder([OK, { code: 1, stdout: "", stderr: "config is locked" }]);
+    const { calls, exec } = claude(OK, { code: 1, stdout: "", stderr: "config is locked" });
     const result = await run(["mcp", "install", "--profile", "master", "--project", project], env, {
       exec,
     });
@@ -225,30 +180,27 @@ describe("against a running engine", () => {
     expect(result.err).toContain("wa mcp: claude mcp add-json failed: config is locked");
     expect(result.err).not.toContain("no headersHelper");
     expect(calls).toHaveLength(2);
-    await rm(project, { recursive: true, force: true });
   });
 
   test("a failing remove stops the install", async () => {
-    const { calls, exec } = recorder([{ code: 2, stdout: "", stderr: "config is locked\nmore" }]);
+    const { calls, exec } = claude({ code: 2, stdout: "", stderr: "config is locked\nmore" });
     const result = await run(["mcp", "install", "--profile", "master", "--project", project], env, {
       exec,
     });
     expect(result).toMatchObject({ code: 1 });
     expect(result.err).toContain("wa mcp: claude mcp remove failed: config is locked");
     expect(calls).toHaveLength(1);
-    await rm(project, { recursive: true, force: true });
   });
 
   test("an unknown profile is a clear error", async () => {
     const result = await run(["mcp", "install", "--profile", "nobody", "--project", project], env, {
-      exec: recorder().exec,
+      exec: claude().exec,
     });
     expect(result).toMatchObject({ code: 1, err: "wa mcp: profile not found" });
-    await rm(project, { recursive: true, force: true });
   });
 
   test("Codex gets a config snippet with an env variable, never an inline token", async () => {
-    const { calls, exec } = recorder();
+    const { calls, exec } = claude();
     const result = await run(["mcp", "install", "--profile", "master", "--client", "codex"], env, {
       exec,
       cwd: project,
@@ -261,7 +213,6 @@ describe("against a running engine", () => {
     expect(result.out).toContain(`export WA_MCP_TOKEN="$(cat "${tokenPath("codex")}")"`);
     expect(result.out).not.toContain("bearer_token =");
     expect(result.out).not.toMatch(/wa_[\w-]{43}/);
-    await rm(project, { recursive: true, force: true });
   });
 
   test("headers refuses a file without a token and never echoes it", async () => {
@@ -273,6 +224,5 @@ describe("against a running engine", () => {
     expect(result.err).not.toContain("not a token\n");
     const missing = await run(["mcp", "headers", "--token-file", join(project, "nope")], env);
     expect(missing.err).toContain("can't read the token file");
-    await rm(project, { recursive: true, force: true });
   });
 });
