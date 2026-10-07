@@ -73,5 +73,6 @@ run = 'WA_HOME="${WA_HOME:-{{config_root}}/.wa-dev}" WA_PORT="${WA_PORT:-7374}" 
 [tasks."dev:raycast"]
 description = "Start the Raycast extension in dev mode (Raycast beta)"
 dir = "{{config_root}}/apps/raycast"
+# "x" points ray at the Raycast beta app (com.raycast-x.macos) instead of the stable one
 env = { RAY_Target = "x" }
 run = "node_modules/.bin/ray develop"
