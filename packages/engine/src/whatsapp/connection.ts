@@ -9,6 +9,7 @@ import {
   type BaileysEventMap,
 } from "@whiskeysockets/baileys";
 import type { Logger } from "../logger";
+import { nowSeconds } from "../store";
 import type { ClientEvents, ClientFactory, WhatsAppClient } from "./client";
 
 export type ConnectionState =
@@ -34,6 +35,7 @@ export interface ConnectionStatus {
   state: ConnectionState;
   qr: string | null;
   me: OwnIdentity | null;
+  /** `at` is unix seconds, like every other timestamp. */
   lastDisconnect: { code: number | null; at: number } | null;
 }
 
@@ -208,7 +210,7 @@ export class WhatsAppConnection {
   }
 
   private async handleClose(code: number | null): Promise<void> {
-    this.lastDisconnect = { code, at: Date.now() };
+    this.lastDisconnect = { code, at: nowSeconds() };
     await this.retireSocket();
     if (this.state === "stopped") return;
 

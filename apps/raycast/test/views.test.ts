@@ -66,7 +66,7 @@ describe("status view", () => {
   test("rows cover connection, identity, sync, counts, outbox and engine", () => {
     const rows = Object.fromEntries(
       statusRows(
-        status({ outbox: { pending: 2 }, lastDisconnect: { code: 428, at: 0 } }),
+        status({ outbox: { pending: 2 }, lastDisconnect: { code: 428, at: 1_760_000_000 } }),
         7373,
       ).map((row) => [row.title, row.text]),
     );
@@ -79,6 +79,7 @@ describe("status view", () => {
       Outbox: "2 waiting",
       Engine: "v0.1.0 on 127.0.0.1:7373",
     });
+    expect(rows["Last Disconnect"]).toContain("2025");
     expect(rows["Last Disconnect"]).toContain("(code 428)");
   });
 

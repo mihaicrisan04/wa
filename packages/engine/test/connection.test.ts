@@ -163,6 +163,15 @@ describe("disconnects", () => {
     expect(clients).toHaveLength(2);
   });
 
+  test("the last disconnect is stamped in unix seconds, like every other timestamp", async () => {
+    const before = Math.floor(Date.now() / 1000);
+    latest().close(DisconnectReason.restartRequired);
+    await settle();
+    const at = connection.status().lastDisconnect?.at ?? 0;
+    expect(at).toBeGreaterThanOrEqual(before);
+    expect(at).toBeLessThanOrEqual(Math.ceil(Date.now() / 1000));
+  });
+
   test("515 restart required reconnects immediately", async () => {
     latest().close(DisconnectReason.restartRequired);
     await settle();
