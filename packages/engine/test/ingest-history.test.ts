@@ -86,9 +86,9 @@ describe("messaging-history.set", () => {
       lid: ANA_LID,
       phone: "40700000002",
     });
-    expect(h.store.messages.get(ANA_PN, messageRows(h.store, ANA_PN)[0]!.id)?.source).toBe(
-      "history",
-    );
+    expect(
+      h.store.messages.get({ chatJid: ANA_PN, id: messageRows(h.store, ANA_PN)[0]!.id })?.source,
+    ).toBe("history");
     // consolidation keeps the last chunk's sync type and progress
     expect(h.store.sync.historyPhases()).toEqual({
       full: {

@@ -66,7 +66,7 @@ export class MediaCache {
 
   private async load(key: MessageKeyRef): Promise<CachedMedia> {
     const { store } = this.options;
-    const row = store.messages.get(key.chatJid, key.id);
+    const row = store.messages.get(key);
     if (!row || isGone(row)) throw new MediaUnavailableError("not_found");
     if (row.view_once) throw new MediaUnavailableError("view_once");
     const media = store.media.get(key);

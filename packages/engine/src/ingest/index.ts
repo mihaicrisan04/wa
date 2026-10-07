@@ -68,7 +68,7 @@ export class Ingest {
   messageContent(key: WAMessageKey): proto.IMessage | undefined {
     if (!key.remoteJid || !key.id) return undefined;
     const identity = new Identity(this.options.store, this.options.me());
-    const row = this.options.store.messages.get(chatOf(key, identity), key.id);
+    const row = this.options.store.messages.get({ chatJid: chatOf(key, identity), id: key.id });
     if (!row?.raw || row.deleted_at !== null) return undefined;
     return parseRaw(row.raw).message ?? undefined;
   }

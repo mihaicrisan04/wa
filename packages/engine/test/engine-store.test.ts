@@ -48,7 +48,7 @@ describe("engine wiring", () => {
       type: "notify",
     });
     await client.idle();
-    expect(engine.store.messages.get(ANA_PN, "3EB0LIVE")?.text).toBe("live");
+    expect(engine.store.messages.get({ chatJid: ANA_PN, id: "3EB0LIVE" })?.text).toBe("live");
   });
 
   test("own messages use the identity from the credentials", async () => {
@@ -87,9 +87,9 @@ describe("engine wiring", () => {
     });
     await client.idle();
     const deadline = Date.now() + 1_000;
-    while (engine.store.messages.get(ANA_PN, "3EB0POOF") && Date.now() < deadline)
+    while (engine.store.messages.get({ chatJid: ANA_PN, id: "3EB0POOF" }) && Date.now() < deadline)
       await Bun.sleep(5);
-    expect(engine.store.messages.get(ANA_PN, "3EB0POOF")).toBeNull();
+    expect(engine.store.messages.get({ chatJid: ANA_PN, id: "3EB0POOF" })).toBeNull();
   });
 });
 

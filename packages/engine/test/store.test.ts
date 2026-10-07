@@ -43,7 +43,7 @@ function record(overrides: Partial<MessageRecord> = {}): MessageRecord {
   };
 }
 
-const textOf = () => store.messages.get(ANA_PN, "3EB0A")?.text;
+const textOf = () => store.messages.get({ chatJid: ANA_PN, id: "3EB0A" })?.text;
 
 describe("migrations", () => {
   test("apply once and record their version", () => {
@@ -109,7 +109,7 @@ describe("message upserts", () => {
   test("a later copy with content refreshes the row but keeps the first source", () => {
     store.messages.upsert(record({ source: "live" }));
     store.messages.upsert(record({ source: "history", text: "hello again" }));
-    expect(store.messages.get(ANA_PN, "3EB0A")).toMatchObject({
+    expect(store.messages.get({ chatJid: ANA_PN, id: "3EB0A" })).toMatchObject({
       text: "hello again",
       source: "live",
     });
@@ -120,7 +120,7 @@ describe("message upserts", () => {
     store.messages.tombstone({ chatJid: ANA_PN, id: "3EB0A" }, 1_700_000_100, null);
     expect(store.messages.upsert(record({ text: "old copy" }))).toBe(false);
     store.messages.updateRaw({ chatJid: ANA_PN, id: "3EB0A" }, '{"message":{}}');
-    expect(store.messages.get(ANA_PN, "3EB0A")).toMatchObject({
+    expect(store.messages.get({ chatJid: ANA_PN, id: "3EB0A" })).toMatchObject({
       type: "revoked",
       text: null,
       raw: null,
@@ -140,7 +140,7 @@ describe("message upserts", () => {
   test("an incoming tombstone wins over content", () => {
     store.messages.upsert(record());
     store.messages.upsert(record({ type: "revoked", text: null, deletedAt: 1_700_000_100 }));
-    expect(store.messages.get(ANA_PN, "3EB0A")).toMatchObject({
+    expect(store.messages.get({ chatJid: ANA_PN, id: "3EB0A" })).toMatchObject({
       type: "revoked",
       deleted_at: 1_700_000_100,
     });
@@ -156,50 +156,49 @@ describe("full-text search", () => {
     add("1", { text: "Am terminat sarcină de la PP" });
     add("2", { text: "Ștefan a trimis tema" });
     add("3", { text: "nimic aici" });
-    expect(store.search("sarcina").map((hit) => hit.id)).toEqual(["1"]);
-    expect(store.search("stefan").map((hit) => hit.id)).toEqual(["2"]);
-    expect(store.search("ȘTEFAN").map((hit) => hit.id)).toEqual(["2"]);
+    expect(store.messages.search("sarcina").map((hit) => hit.id)).toEqual(["1"]);
+    expect(store.messages.search("stefan").map((hit) => hit.id)).toEqual(["2"]);
+    expect(store.messages.search("ȘTEFAN").map((hit) => hit.id)).toEqual(["2"]);
   });
 
   test("searches captions and file names, prefix-matching the last term", () => {
     add("1", { type: "document", text: null, caption: "rezolvare", fileName: "tema-2.pdf" });
-    expect(store.search("rezolv").map((hit) => hit.id)).toEqual(["1"]);
-    expect(store.search("tema-2").map((hit) => hit.id)).toEqual(["1"]);
+    expect(store.messages.search("rezolv").map((hit) => hit.id)).toEqual(["1"]);
+    expect(store.messages.search("tema-2").map((hit) => hit.id)).toEqual(["1"]);
   });
 
   test("survives FTS syntax in user input", () => {
     add("1", { text: "don't forget c++ and PP: lab 3" });
     for (const query of ["tema-2", "don't", "c++", "PP:", 'AND OR NOT "', "NEAR(", "*", "a OR"]) {
-      expect(() => store.search(query)).not.toThrow();
+      expect(() => store.messages.search(query)).not.toThrow();
     }
-    expect(store.search("don't").map((hit) => hit.id)).toEqual(["1"]);
-    expect(store.search("c++").map((hit) => hit.id)).toEqual(["1"]);
-    expect(store.search("PP:").map((hit) => hit.id)).toEqual(["1"]);
+    expect(store.messages.search("don't").map((hit) => hit.id)).toEqual(["1"]);
+    expect(store.messages.search("c++").map((hit) => hit.id)).toEqual(["1"]);
+    expect(store.messages.search("PP:").map((hit) => hit.id)).toEqual(["1"]);
   });
 
   test("returns a snippet and hides revoked or deleted messages", () => {
     add("1", { text: "meet at the library tomorrow" });
     add("2", { text: "library card" });
     store.messages.tombstone({ chatJid: ANA_PN, id: "2" }, 1, null);
-    const hits = store.search("library");
+    const hits = store.messages.search("library");
     expect(hits.map((hit) => hit.id)).toEqual(["1"]);
     expect(hits[0]!.snippet).toContain("\u0002library\u0003");
 
     store.messages.delete({ chatJid: ANA_PN, id: "1" });
-    expect(store.search("library")).toEqual([]);
+    expect(store.messages.search("library")).toEqual([]);
     expect(count(store, "SELECT rowid FROM messages_fts WHERE messages_fts MATCH 'library'")).toBe(
       0,
     );
   });
 
-  test("can be limited to chats", () => {
+  test("can be limited by a condition on the message", () => {
     add("1", { text: "shared word" });
     store.messages.upsert(
       record({ chatJid: "other@s.whatsapp.net", id: "2", text: "shared word" }),
     );
-    expect(
-      store.search("shared", { chatJids: ["other@s.whatsapp.net"] }).map((hit) => hit.id),
-    ).toEqual(["2"]);
+    const where = { sql: "m.chat_jid = $chat", params: { chat: "other@s.whatsapp.net" } };
+    expect(store.messages.search("shared", { where }).map((hit) => hit.id)).toEqual(["2"]);
   });
 });
 

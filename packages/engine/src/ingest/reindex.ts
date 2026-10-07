@@ -1,7 +1,7 @@
 import type { Logger } from "../logger";
 import type { MessageRow, Store } from "../store";
 import type { OwnIdentity } from "../whatsapp/connection";
-import { normalizeMessage, revokedMessage } from "../whatsapp/normalize";
+import { normalizeMessage, revokedMessage, type Normalized } from "../whatsapp/normalize";
 import { parseRaw } from "../whatsapp/raw";
 import { Identity } from "./lid";
 
@@ -19,7 +19,7 @@ const PAGE_SIZE = 500;
  */
 export function reindex(store: Store, me: OwnIdentity | null, logger: Logger): ReindexResult {
   // first make the search index match the rows, so the update triggers can maintain it
-  store.db.run("INSERT INTO messages_fts (messages_fts) VALUES ('rebuild')");
+  store.messages.rebuildSearchIndex();
   const identity = new Identity(store, me);
   const result: ReindexResult = { rewritten: 0, skipped: 0 };
   let after = 0;
@@ -49,11 +49,7 @@ export function reindex(store: Store, me: OwnIdentity | null, logger: Logger): R
 }
 
 /** A tombstone is re-read without content, whatever its raw still holds. */
-function safeNormalize(
-  row: MessageRow,
-  identity: Identity,
-  logger: Logger,
-): ReturnType<typeof normalizeMessage> | null {
+function safeNormalize(row: MessageRow, identity: Identity, logger: Logger): Normalized | null {
   if (!row.raw) return null;
   try {
     const message = parseRaw(row.raw);

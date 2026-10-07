@@ -44,7 +44,7 @@ describe("edits", () => {
     const [row] = messageRows(h.store, GROUP);
     expect(row).toMatchObject({ text: "v2" });
     expect(row!.edited_at).toBeGreaterThan(0);
-    expect(h.store.search("v2").map((hit) => hit.id)).toEqual(["3EB0ORIG"]);
+    expect(h.store.messages.search("v2").map((hit) => hit.id)).toEqual(["3EB0ORIG"]);
     expect(h.ingest.messageContent(keyOf(target))).toMatchObject({ conversation: "v2" });
   });
 
@@ -164,7 +164,7 @@ describe("edits", () => {
     expect(messageRows(h.store, GROUP)).toEqual([
       expect.objectContaining({ id: "3EB0ORIG", type: "placeholder", text: null }),
     ]);
-    expect(h.store.search("pwned")).toEqual([]);
+    expect(h.store.messages.search("pwned")).toEqual([]);
 
     // the genuine copy (e.g. from history) fills the placeholder
     await upsert(original());
@@ -198,7 +198,7 @@ describe("edits", () => {
     expect(messageRows(h.store, GROUP)).toEqual([
       expect.objectContaining({ id: "3EB0ORIG", type: "placeholder", text: null }),
     ]);
-    expect(h.store.search("pwned")).toEqual([]);
+    expect(h.store.messages.search("pwned")).toEqual([]);
   });
 
   test("edits of media replace the caption and keep the media", async () => {
@@ -209,7 +209,7 @@ describe("edits", () => {
     });
     await upsert(image);
     await upsert(buildMessage({ chat: ANA_PN, message: content.edit(keyOf(image), "after") }));
-    expect(h.store.messages.get(ANA_PN, "3EB0IMG")).toMatchObject({
+    expect(h.store.messages.get({ chatJid: ANA_PN, id: "3EB0IMG" })).toMatchObject({
       type: "image",
       caption: "after",
       has_media: 1,

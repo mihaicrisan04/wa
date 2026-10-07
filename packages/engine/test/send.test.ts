@@ -52,7 +52,8 @@ describe("send:self", () => {
     expect(api.client().sent[0]).toMatchObject({ jid: ME_PN, content: { text: "note" } });
     await api.engine.ingest.drain();
     await eventually(
-      () => api.engine.store.messages.get(ME_PN, result.messageId)?.text === "note",
+      () =>
+        api.engine.store.messages.get({ chatJid: ME_PN, id: result.messageId })?.text === "note",
       "the echo to be stored under the fixed id",
     );
   });

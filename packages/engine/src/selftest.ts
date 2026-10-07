@@ -98,7 +98,7 @@ async function storeFixture(): Promise<void> {
       message: content.text("Ștefan a trimis sarcina"),
     });
     await ingest.handle({ "messages.upsert": { messages: [message], type: "notify" } });
-    const hits = store.search("stefan sarcină");
+    const hits = store.messages.search("stefan sarcină");
     assert(
       hits.length === 1 && hits[0]?.id === message.key.id,
       "full-text search missed the fixture",

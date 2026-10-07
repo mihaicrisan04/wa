@@ -10,7 +10,6 @@ import { MessagesRepo } from "./messages";
 import { OutboxRepo } from "./outbox";
 import { ParticipantsRepo } from "./participants";
 import { PENDING_REVOKE_TTL, PendingRevokesRepo } from "./pending-revokes";
-import { searchMessages, type SearchHit, type SearchOptions } from "./search";
 import { SyncRepo } from "./sync";
 
 export class Store {
@@ -69,10 +68,6 @@ export class Store {
     });
   }
 
-  search(query: string, options?: SearchOptions): SearchHit[] {
-    return searchMessages(this.db, query, options);
-  }
-
   close(): void {
     this.db.close();
   }
@@ -84,8 +79,7 @@ export function openStore(path: string): Store {
 
 export type { CollectionRow, ProfileRecord, ProfileSpec, TokenRow } from "./access";
 export type { OutboxRow } from "./outbox";
-export type { ChatKind, ChatPatch, ChatRow } from "./chats";
-export type { ContactPatch, ContactRow } from "./contacts";
+export type { ChatKind, ChatPatch } from "./chats";
 export type { MediaRow } from "./media";
 export {
   PLACEHOLDER_TYPE,
@@ -99,4 +93,4 @@ export {
 export type { Member } from "./participants";
 export type { PendingRevoke } from "./pending-revokes";
 export type { HistoryPhaseState, HistoryPhases } from "./sync";
-export { toFtsQuery, type SearchHit, type SearchOptions } from "./search";
+export { toFtsQuery } from "./search";

@@ -41,7 +41,7 @@ export function searchVisible(ctx: ReadContext, options: SearchQueryOptions): Pa
   if (options.type) filters.push({ sql: "m.type = $type", params: { type: options.type } });
 
   const [offset] = options.cursor ? decodeCursor(options.cursor, offsetCursor) : [0];
-  const hits = ctx.store.search(options.q, {
+  const hits = ctx.store.messages.search(options.q, {
     where: and(...filters),
     limit: options.limit + 1,
     offset,

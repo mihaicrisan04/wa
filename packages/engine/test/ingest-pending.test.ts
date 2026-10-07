@@ -53,7 +53,7 @@ test("a revoke of a message not decrypted yet keeps a tombstone the content cann
   expect(messageRows(h.store, GROUP)).toEqual([
     expect.objectContaining({ id: ID, type: "revoked", text: null }),
   ]);
-  expect(h.store.search("secret")).toEqual([]);
+  expect(h.store.messages.search("secret")).toEqual([]);
   expect(h.ingest.messageContent(keyOf(stub()))).toBeUndefined();
 });
 
@@ -77,7 +77,7 @@ test("an edit of a message not decrypted yet survives the original arriving", as
   expect(messageRows(h.store, GROUP)).toEqual([
     expect.objectContaining({ id: ID, type: "text", text: "v2", edited_at: 1_700_000_100 }),
   ]);
-  expect(h.store.search("v1")).toEqual([]);
+  expect(h.store.messages.search("v1")).toEqual([]);
   expect(h.ingest.messageContent(keyOf(stub()))).toMatchObject({ conversation: "v2" });
 });
 
@@ -86,7 +86,7 @@ test("a caption edited before decrypting keeps the original's media", async () =
   await upsert(from(ANA_PN, content.edit(keyOf(stub()), "after", 1_700_000_100_000)));
   await upsert(decrypted(content.image({ caption: "before" })));
 
-  expect(h.store.messages.get(GROUP, ID)).toMatchObject({
+  expect(h.store.messages.get({ chatJid: GROUP, id: ID })).toMatchObject({
     type: "image",
     caption: "after",
     has_media: 1,
@@ -103,7 +103,7 @@ test("a spoofed edit of a message not decrypted yet is ignored", async () => {
   await upsert(from(EVE_PN, content.edit(keyOf(stub()), "pwned")));
   await upsert(decrypted(content.text("v1")));
   expect(messageRows(h.store, GROUP)[0]).toMatchObject({ text: "v1", edited_at: null });
-  expect(h.store.search("pwned")).toEqual([]);
+  expect(h.store.messages.search("pwned")).toEqual([]);
 });
 
 test("a spoofed revoke folded into a buffered message leaves a placeholder the real copy fills", async () => {
@@ -139,7 +139,7 @@ test("a revoke from an unmapped LID hides the original sent under the PN until t
   expect(messageRows(h.store, GROUP)).toEqual([
     expect.objectContaining({ id: ID, type: "placeholder", text: null, deleted_at: null }),
   ]);
-  expect(h.store.search("secret")).toEqual([]);
+  expect(h.store.messages.search("secret")).toEqual([]);
   expect(h.ingest.messageContent(keyOf(stub()))).toBeUndefined();
 
   await h.emit({ "lid-mapping.update": { lid: ANA_LID, pn: ANA_PN } });
@@ -147,5 +147,5 @@ test("a revoke from an unmapped LID hides the original sent under the PN until t
   expect(messageRows(h.store, GROUP)).toEqual([
     expect.objectContaining({ id: ID, type: "revoked", text: null }),
   ]);
-  expect(h.store.search("secret")).toEqual([]);
+  expect(h.store.messages.search("secret")).toEqual([]);
 });
