@@ -203,6 +203,31 @@ describe("chats", () => {
     });
   });
 
+  test("unread counts in updates add up, reset on read and mark unread", async () => {
+    const unread = () => h.store.chats.get(ANA_PN)?.unread_count;
+    const update = (unreadCount: number | null) =>
+      h.emit({ "chats.update": [{ id: ANA_PN, unreadCount }] });
+
+    await h.emit({ "chats.upsert": [{ id: ANA_PN, unreadCount: 2 }] });
+    for (let i = 0; i < 3; i++) await update(1);
+    expect(unread()).toBe(5);
+    await h.buffered((client) => {
+      client.emit("chats.update", [{ id: ANA_PN, unreadCount: 1 }]);
+      client.emit("chats.update", [{ id: ANA_PN, unreadCount: 1 }]);
+    });
+    expect(unread()).toBe(7);
+    await update(null);
+    expect(unread()).toBe(7);
+    await update(0);
+    expect(unread()).toBe(0);
+    await update(-1);
+    expect(unread()).toBe(-1);
+    await update(1);
+    expect(unread()).toBe(1);
+    await h.emit({ "chats.upsert": [{ id: ANA_PN, unreadCount: 4 }] });
+    expect(unread()).toBe(4);
+  });
+
   test("history chats carry archive, pin, mute and disappearing settings", async () => {
     await h.emit({
       "messaging-history.set": historySet({

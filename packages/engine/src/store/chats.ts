@@ -26,6 +26,8 @@ export interface ChatPatch {
   pinned?: number | null;
   muteEndTime?: number | null;
   unreadCount?: number;
+  /** New unread messages on top of the stored count (a marked-unread -1 counts as 0). */
+  unreadDelta?: number;
   ephemeralExpiration?: number | null;
   lastMessageAt?: number | null;
   createdAt?: number | null;
@@ -37,9 +39,17 @@ const PATCH_COLUMNS: Record<keyof ChatPatch, string> = {
   pinned: "pinned",
   muteEndTime: "mute_end_time",
   unreadCount: "unread_count",
+  unreadDelta: "unread_count",
   ephemeralExpiration: "ephemeral_expiration",
   lastMessageAt: "last_message_at",
   createdAt: "created_at",
+};
+
+/** How an existing row takes a patched field; plain assignment otherwise. */
+const MERGE_EXPRESSIONS: Partial<Record<keyof ChatPatch, string>> = {
+  lastMessageAt:
+    "max(coalesce(chats.last_message_at, 0), coalesce(excluded.last_message_at, 0))",
+  unreadDelta: "max(chats.unread_count, 0) + excluded.unread_count",
 };
 
 export class ChatsRepo {
@@ -62,14 +72,16 @@ export class ChatsRepo {
   }
 
   upsert(jid: string, kind: ChatKind, patch: ChatPatch = {}): void {
-    const entries = (Object.keys(patch) as (keyof ChatPatch)[])
-      .filter((field) => patch[field] !== undefined)
-      .map((field) => [PATCH_COLUMNS[field], toColumnValue(patch[field])] as const);
+    const fields = (Object.keys(patch) as (keyof ChatPatch)[]).filter(
+      (field) => patch[field] !== undefined,
+    );
+    const entries = fields.map(
+      (field) => [PATCH_COLUMNS[field], toColumnValue(patch[field])] as const,
+    );
     const columns = entries.map(([column]) => column);
-    const updates = columns.map((column) =>
-      column === "last_message_at"
-        ? "last_message_at = max(coalesce(chats.last_message_at, 0), coalesce(excluded.last_message_at, 0))"
-        : `${column} = excluded.${column}`,
+    const updates = fields.map(
+      (field) =>
+        `${PATCH_COLUMNS[field]} = ${MERGE_EXPRESSIONS[field] ?? `excluded.${PATCH_COLUMNS[field]}`}`,
     );
     this.db
       .query(

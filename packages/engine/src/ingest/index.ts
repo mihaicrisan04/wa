@@ -6,7 +6,7 @@ import type { OwnIdentity } from "../whatsapp/connection";
 import { removeCachedFiles } from "../whatsapp/media";
 import { chatOf } from "../whatsapp/normalize";
 import { parseRaw } from "../whatsapp/raw";
-import { deleteChats, ingestChat, ingestContact } from "./chats-contacts";
+import { deleteChats, ingestChat, ingestChatUpdate, ingestContact } from "./chats-contacts";
 import type { IngestContext } from "./context";
 import { GroupCache, ingestGroup, ingestParticipantsUpdate } from "./groups";
 import { ingestHistory, recordHistoryStatus } from "./history";
@@ -107,7 +107,7 @@ function apply(ctx: IngestContext, batch: Batch): void {
   if (status) recordHistoryStatus(ctx, status);
 
   for (const chat of batch["chats.upsert"] ?? []) ingestChat(ctx, chat);
-  for (const chat of batch["chats.update"] ?? []) ingestChat(ctx, chat);
+  for (const chat of batch["chats.update"] ?? []) ingestChatUpdate(ctx, chat);
   for (const contact of batch["contacts.upsert"] ?? []) ingestContact(ctx, contact);
   for (const contact of batch["contacts.update"] ?? []) ingestContact(ctx, contact);
   for (const group of batch["groups.upsert"] ?? []) ingestGroup(ctx, group);

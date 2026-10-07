@@ -13,11 +13,23 @@ import { phoneOf } from "./lid";
 
 type ChatFields = Partial<Chat> & Pick<ChatUpdate, "conditional">;
 
-/** Chats from history, `chats.upsert` and `chats.update`: only fields actually sent are written. */
+/** Chats from history and `chats.upsert`: only fields actually sent are written. */
 export function ingestChat(ctx: IngestContext, chat: ChatFields): void {
+  writeChat(ctx, chat, false);
+}
+
+/** Like `ingestChat`, but a positive unread count adds to the stored one. */
+export function ingestChatUpdate(ctx: IngestContext, chat: ChatFields): void {
+  writeChat(ctx, chat, true);
+}
+
+function writeChat(ctx: IngestContext, chat: ChatFields, isUpdate: boolean): void {
   if (!chat.id || isJidStatusBroadcast(chat.id)) return;
   const jid = ctx.identity.chat(chat.id);
-  ctx.store.chats.upsert(jid, ctx.identity.kindOf(jid), chatPatch(chat));
+  ctx.store.chats.upsert(jid, ctx.identity.kindOf(jid), {
+    ...chatPatch(chat),
+    ...unreadPatch(chat, isUpdate),
+  });
 }
 
 export function deleteChats(ctx: IngestContext, ids: string[]): void {
@@ -56,14 +68,23 @@ function chatPatch(chat: ChatFields): ChatPatch {
   if (sent("archived")) patch.archived = Boolean(chat.archived);
   if (sent("pinned")) patch.pinned = chat.pinned ? toNumber(chat.pinned) : null;
   if (sent("muteEndTime")) patch.muteEndTime = positive(chat.muteEndTime);
-  if (chat.markedAsUnread) patch.unreadCount = -1;
-  else if (typeof chat.unreadCount === "number") patch.unreadCount = chat.unreadCount;
   if (sent("ephemeralExpiration")) patch.ephemeralExpiration = chat.ephemeralExpiration || null;
   const lastMessageAt = positive(chat.conversationTimestamp) ?? positive(chat.lastMsgTimestamp);
   if (lastMessageAt) patch.lastMessageAt = lastMessageAt;
   const createdAt = positive(chat.createdAt);
   if (createdAt) patch.createdAt = createdAt;
   return patch;
+}
+
+/**
+ * Baileys emits each incoming message as `chats.update` with `unreadCount: 1` (summed while
+ * buffering), a read as 0 and marked-unread as -1; history and upserts carry the full count.
+ */
+function unreadPatch(chat: ChatFields, isUpdate: boolean): ChatPatch {
+  if (chat.markedAsUnread) return { unreadCount: -1 };
+  if (typeof chat.unreadCount !== "number") return {};
+  if (isUpdate && chat.unreadCount > 0) return { unreadDelta: chat.unreadCount };
+  return { unreadCount: chat.unreadCount };
 }
 
 function positive(value: Parameters<typeof toNumber>[0]): number | null {
