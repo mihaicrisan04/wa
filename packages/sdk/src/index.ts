@@ -1,5 +1,6 @@
 export {
   DEFAULT_PORT,
+  MAX_UPLOAD_BYTES,
   WaApiError,
   createWaClient,
   type ChatsParams,

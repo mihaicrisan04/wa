@@ -26,6 +26,9 @@ import type {
 
 export const DEFAULT_PORT = 7373;
 
+/** WhatsApp's cap for documents; the engine accepts uploads up to this size. */
+export const MAX_UPLOAD_BYTES = 2 * 1024 ** 3;
+
 export interface WaClientOptions {
   /** Defaults to the local engine on the default port. */
   baseUrl?: string;
@@ -244,7 +247,10 @@ export function createWaClient(options: WaClientOptions = {}): WaClient {
     },
     recipients: (params = {}) => items(call("/v1/recipients", { query: { ...params } })),
     send: (input) => call("/v1/send", { method: "POST", json: input }),
-    sendFile: (input) => {
+    sendFile: async (input) => {
+      if (input.file.size > MAX_UPLOAD_BYTES) {
+        throw new WaApiError(413, "too_large", "WhatsApp only takes files up to 2 GB");
+      }
       const form = new FormData();
       form.set("to", input.to);
       if (input.caption) form.set("caption", input.caption);

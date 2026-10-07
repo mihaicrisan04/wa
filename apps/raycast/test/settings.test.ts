@@ -81,6 +81,26 @@ describe("error descriptions", () => {
     });
   });
 
+  test("a connection cut mid-request is not reported as a stopped engine", () => {
+    for (const code of ["EPIPE", "ECONNRESET", undefined]) {
+      const cut = new TypeError("fetch failed", {
+        cause: Object.assign(new Error("socket hang up"), { code }),
+      });
+      expect(describeError(cut, 7373)).toMatchObject({
+        title: "Lost the connection to the wa engine",
+        message: expect.stringContaining("cut off"),
+      });
+    }
+  });
+
+  test("files over WhatsApp's cap say so", () => {
+    const error = new WaApiError(413, "too_large", "WhatsApp only takes files up to 2 GB");
+    expect(describeError(error, 7373)).toEqual({
+      title: "File too large",
+      message: "WhatsApp only takes files up to 2 GB.",
+    });
+  });
+
   test("timeouts", () => {
     const timeout = new DOMException("The operation timed out.", "TimeoutError");
     expect(describeError(timeout, 7373).title).toBe("wa engine didn't answer");

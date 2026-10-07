@@ -20,10 +20,16 @@ export function describeError(error: unknown, port: number): ErrorDescription {
   if (isTimeout(error)) {
     return { title: "wa engine didn't answer", message: `127.0.0.1:${port} timed out.` };
   }
-  if (isConnectionFailure(error)) {
+  if (isConnectionRefused(error)) {
     return {
       title: "wa engine isn't running",
       message: `Nothing answers on 127.0.0.1:${port}. ${START_ENGINE}`,
+    };
+  }
+  if (isFetchFailure(error)) {
+    return {
+      title: "Lost the connection to the wa engine",
+      message: `127.0.0.1:${port} hung up before answering, so an upload may have been cut off. Try again.`,
     };
   }
   return {
@@ -49,6 +55,8 @@ function describeApiError(error: WaApiError): ErrorDescription {
         title: "Not found",
         message: "It may have been deleted, or it's outside this token's chats.",
       };
+    case "too_large":
+      return { title: "File too large", message: "WhatsApp only takes files up to 2 GB." };
     case "view_once":
       return { title: "View-once media", message: "View-once media is never downloaded." };
     default:
@@ -61,8 +69,13 @@ function isTimeout(error: unknown): boolean {
 }
 
 /** Node's fetch rejects with `TypeError: fetch failed` and puts the socket error in `cause`. */
-function isConnectionFailure(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const code = (error.cause as { code?: unknown } | undefined)?.code;
-  return code === "ECONNREFUSED" || code === "ECONNRESET" || error.message === "fetch failed";
+function isFetchFailure(error: unknown): error is Error {
+  return error instanceof Error && error.message === "fetch failed";
+}
+
+function isConnectionRefused(error: unknown): boolean {
+  return (
+    isFetchFailure(error) &&
+    (error.cause as { code?: unknown } | undefined)?.code === "ECONNREFUSED"
+  );
 }

@@ -1,4 +1,5 @@
 import { chmod, mkdir, rm } from "node:fs/promises";
+import { MAX_UPLOAD_BYTES } from "@wa/sdk";
 import type { Server } from "bun";
 import { ensureRaycastAccess } from "./access";
 import { createApp, type ApiDeps, type App } from "./api/app";
@@ -47,6 +48,8 @@ export interface Engine {
 }
 
 const PURGE_INTERVAL_MS = 60_000;
+// Bun's 128 MB default would cut file uploads off mid-stream; leave room for the multipart fields
+const MAX_REQUEST_BYTES = MAX_UPLOAD_BYTES + 1024 * 1024;
 
 export async function startEngine(
   config: EngineConfig,
@@ -127,7 +130,12 @@ export async function startEngine(
   try {
     await ensureRaycastAccess(store, config.home);
     adminServer = await listenOnSocket(adminSocket, apps.admin.fetch);
-    server = Bun.serve({ hostname: config.host, port: config.port, fetch: apps.tcp.fetch });
+    server = Bun.serve({
+      hostname: config.host,
+      port: config.port,
+      fetch: apps.tcp.fetch,
+      maxRequestBodySize: MAX_REQUEST_BYTES,
+    });
     logger.info({ port: server.port }, "wa engine listening");
     await connection.start();
   } catch (err) {
