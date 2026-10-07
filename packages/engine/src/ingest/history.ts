@@ -22,11 +22,7 @@ function syncTypeName(type: proto.HistorySync.HistorySyncType | null | undefined
   return (HistorySyncType[type] ?? `type_${type}`).toLowerCase();
 }
 
-/**
- * A history chunk, or the whole consolidated first sync. Everything is ingested whatever the
- * sync type; messages come only from `messages` (each chat's own list is truncated), passed in
- * already normalized. Returns the page when it answers an on-demand request.
- */
+/** A history chunk or the consolidated first sync, of any type; returns an on-demand answer's page. */
 export function ingestHistory(
   ctx: IngestContext,
   data: BaileysEventMap["messaging-history.set"],

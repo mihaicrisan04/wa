@@ -124,10 +124,7 @@ export function contextInfoOf(
   return bodyOf(content, type).contextInfo ?? null;
 }
 
-/**
- * Applies an edit to the original content in place: the new text or caption replaces the old
- * one, everything else (media keys, quotes) stays.
- */
+/** Puts the edit's text or caption into `original` in place; media keys and quotes stay. */
 export function applyEditedText(original: proto.IMessage, edited: proto.IMessage): void {
   const { text, caption } = textOf(edited);
   const replacement = text ?? caption;

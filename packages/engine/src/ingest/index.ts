@@ -100,6 +100,7 @@ export class Ingest {
 /** Order matters: chats and people exist before messages, deletes come last. */
 function apply(ctx: IngestContext, batch: Batch): HistoryPage | null {
   const history = batch["messaging-history.set"];
+  // only `messages`: each history chat's own list is truncated
   const historyMessages = normalizeMessages(ctx, history?.messages ?? [], "history");
   const liveMessages = normalizeMessages(ctx, batch["messages.upsert"]?.messages ?? [], "live");
   const carriers = carriersOf(historyMessages, liveMessages);

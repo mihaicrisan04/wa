@@ -284,12 +284,9 @@ export class MessagesRepo {
       .all({ afterRowid, limit });
   }
 
-  /**
-   * Moves a chat's messages to another jid. When both hold the same message id, the copy that
-   * knows more wins: a tombstone over content, content over a placeholder, then the later edit;
-   * on a tie the target's copy is kept.
-   */
+  /** Moves a chat's messages to `to`; on a clash the copy that knows more wins, else the target's. */
   moveChat(from: string, to: string): void {
+    // a tombstone over content over a placeholder, then the later edit
     const rank = (row: string) =>
       `(CASE WHEN ${row}.deleted_at IS NOT NULL THEN 2 WHEN ${row}.type = '${PLACEHOLDER_TYPE}' THEN 0 ELSE 1 END,
         coalesce(${row}.edited_at, 0))`;
