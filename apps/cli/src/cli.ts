@@ -26,7 +26,7 @@ import { tokens } from "./commands/tokens";
 import { EngineUnavailableError } from "./engine-client";
 import { who } from "./output";
 
-export const COMMANDS: Command[] = [
+const COMMANDS: Command[] = [
   serve,
   service,
   link,

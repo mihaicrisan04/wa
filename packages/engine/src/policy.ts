@@ -39,7 +39,7 @@ export interface SqlFragment {
   params: SqlParams;
 }
 
-export const TRUE: SqlFragment = { sql: "1", params: {} };
+const TRUE: SqlFragment = { sql: "1", params: {} };
 
 export function seesAllChats(principal: Principal): boolean {
   return principal.kind === "admin" || principal.allChats;

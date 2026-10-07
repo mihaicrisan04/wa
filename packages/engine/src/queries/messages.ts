@@ -24,7 +24,7 @@ export function visibleMessages(ctx: ReadContext): SqlFragment {
   });
 }
 
-export function selectMessages(
+function selectMessages(
   ctx: ReadContext,
   where: SqlFragment,
   order: Order,

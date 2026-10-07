@@ -54,7 +54,7 @@ export function messageLine(message: Message): string {
 const UNPRINTABLE = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g;
 
 /** Sender-controlled text made safe for a terminal: newlines folded, control characters shown as `�`. */
-export function oneLine(text: string): string {
+function oneLine(text: string): string {
   return text
     .replace(/\s*[\n\r]+\s*/g, " ⏎ ")
     .replace(/\t/g, " ")

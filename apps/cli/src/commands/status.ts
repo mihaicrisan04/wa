@@ -25,7 +25,7 @@ export const status: Command = {
   },
 };
 
-export function describe(current: Status): string[] {
+function describe(current: Status): string[] {
   const account = current.me ? `${who(current.me.jid)} (${current.me.jid})` : "not linked";
   const { history } = current;
   const rows = [

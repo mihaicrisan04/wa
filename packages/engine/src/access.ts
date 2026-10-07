@@ -26,7 +26,7 @@ export function raycastTokenPath(home: string): string {
 }
 
 /** `wa_` + base64url(32 random bytes). */
-export function generateToken(): string {
+function generateToken(): string {
   return `wa_${randomBytes(32).toString("base64url")}`;
 }
 

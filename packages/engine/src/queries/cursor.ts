@@ -20,7 +20,7 @@ export function decodeCursor<T extends z.ZodType>(cursor: string, schema: T): z.
 /** A message position: `(ts, rowid)`, compared as a pair. */
 export type Position = [ts: number, rowid: number];
 
-export const positionSchema = z.tuple([z.number().int(), z.number().int()]);
+const positionSchema = z.tuple([z.number().int(), z.number().int()]);
 
 const MAX_ROWID = Number.MAX_SAFE_INTEGER;
 

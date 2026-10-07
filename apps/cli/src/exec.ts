@@ -9,7 +9,7 @@ export interface ExecResult {
 /** Runs a program (no shell) and collects its output. */
 export type Exec = (argv: string[], options: { cwd: string }) => Promise<ExecResult>;
 
-export class ProgramNotFoundError extends FailureError {
+class ProgramNotFoundError extends FailureError {
   constructor(readonly program: string) {
     super(`${program} was not found on PATH`);
   }

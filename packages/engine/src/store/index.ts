@@ -91,10 +91,4 @@ export {
   type OldestMessage,
 } from "./messages";
 export type { Participant, ParticipantRole } from "./participants";
-export {
-  SNIPPET_CLOSE,
-  SNIPPET_OPEN,
-  toFtsQuery,
-  type SearchHit,
-  type SearchOptions,
-} from "./search";
+export { toFtsQuery, type SearchHit, type SearchOptions } from "./search";

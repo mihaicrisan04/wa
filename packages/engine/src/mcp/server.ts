@@ -10,12 +10,12 @@ import { describeScope, visibleScope } from "./scope";
 import type { ToolEnv } from "./tool";
 import { TOOLS } from "./tools";
 
-export function defaultExportDir(): string {
+function defaultExportDir(): string {
   return join(tmpdir(), "wa-export");
 }
 
 /** A fresh server for one request, holding only the tools the principal's capabilities allow. */
-export function buildServerFor(principal: TokenPrincipal, deps: ApiDeps): McpServer {
+function buildServerFor(principal: TokenPrincipal, deps: ApiDeps): McpServer {
   const env: ToolEnv = {
     deps,
     principal,
