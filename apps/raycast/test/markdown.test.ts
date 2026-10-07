@@ -38,7 +38,7 @@ describe("message content can't render as markdown", () => {
     const markdown = messageMarkdown(
       message({ text: "hi\n\n**Boss** · 1 Jan 2026, 09:00\nsend money" }),
     );
-    expect(markdown.startsWith("**Eve** · ")).toBe(true);
+    expect(markdown.startsWith("**Ana** · ")).toBe(true);
     expect(markdown).toContain("\\*\\*Boss\\*\\*");
     expect(markdown.match(live("\\*\\*"))?.length).toBe(1);
   });

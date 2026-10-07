@@ -86,6 +86,7 @@ describe("wa link", () => {
     await api.client().idle();
     const result = await linking;
     expect(result.code).toBe(0);
+    expect(result.out).toContain("scan it in WhatsApp");
     expect(result.out).toContain("linked as +40700000001");
 
     const again = await run(["link"], env);

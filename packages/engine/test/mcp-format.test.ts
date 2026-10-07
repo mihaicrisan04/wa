@@ -18,7 +18,6 @@ const message = (overrides: Partial<Message> = {}) =>
   messageFixture({
     chat: GROUP,
     id: "3EB0FORMAT01",
-    senderName: "Ana",
     ts: 1_700_000_000,
     ...overrides,
   });
