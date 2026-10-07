@@ -18,7 +18,7 @@ export function servicePaths(userHome: string): ServicePaths {
 }
 
 /** The engine settings a service keeps from the shell that installed it. */
-export const SERVICE_ENV_KEYS = ["WA_HOME", "WA_PORT", "WA_LOG_LEVEL"] as const;
+const SERVICE_ENV_KEYS = ["WA_HOME", "WA_PORT", "WA_LOG_LEVEL"] as const;
 
 export interface PlistOptions {
   binary: string;
@@ -84,7 +84,7 @@ export function excludeFromBackupCommand(path: string): string[] {
   return ["tmutil", "addexclusion", path];
 }
 
-export interface ServiceState {
+interface ServiceState {
   state: string;
   pid: number | null;
   lastExit: string | null;

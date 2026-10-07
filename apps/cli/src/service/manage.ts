@@ -1,18 +1,9 @@
-import {
-  chmod,
-  copyFile,
-  mkdir,
-  readFile,
-  realpath,
-  rename,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { chmod, copyFile, mkdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { ENGINE_VERSION, defaultHome, loadConfig, type EngineConfig } from "@wa/engine";
-import { FailureError, type CommandIO } from "../command";
-import { spawnExec, waCommand, type Exec } from "../exec";
+import { EXIT_FAILURE, FailureError, type CommandIO } from "../command";
+import { firstLine, spawnExec, waCommand, type Exec } from "../exec";
 import { table } from "../output";
 import {
   SERVICE_LABEL,
@@ -24,6 +15,7 @@ import {
   servicePaths,
   servicePlist,
   type PlistOptions,
+  type ServicePaths,
 } from "./launchd";
 
 const BOOTSTRAP_ATTEMPTS = 5;
@@ -33,7 +25,7 @@ interface Context {
   io: CommandIO;
   exec: Exec;
   uid: number;
-  paths: ReturnType<typeof servicePaths>;
+  paths: ServicePaths;
   config: EngineConfig;
 }
 
@@ -146,13 +138,9 @@ export async function uninstallService(io: CommandIO): Promise<number> {
 /** Exit 0 only while the agent runs. */
 export async function serviceStatus(io: CommandIO): Promise<number> {
   const { exec, uid, paths } = context(io);
-  const installed = await readFile(paths.plist, "utf8").then(
-    () => true,
-    () => false,
-  );
-  if (!installed) {
-    io.out(`not installed (wa service install)`);
-    return 1;
+  if (!(await Bun.file(paths.plist).exists())) {
+    io.out("not installed (wa service install)");
+    return EXIT_FAILURE;
   }
   const printed = await exec(printCommand(uid), { cwd: "/" });
   const service =
@@ -169,7 +157,7 @@ export async function serviceStatus(io: CommandIO): Promise<number> {
     ["logs", paths.logFile],
   ];
   for (const line of table(rows)) io.out(line);
-  return service.state === "running" ? 0 : 1;
+  return service.state === "running" ? 0 : EXIT_FAILURE;
 }
 
 /** The last `lines` lines of the engine log, or follows it with `tail -F`. */
@@ -186,15 +174,11 @@ export async function serviceLogs(
   }
   if (!(await Bun.file(paths.logFile).exists())) {
     io.err(`no logs yet at ${paths.logFile}`);
-    return 1;
+    return EXIT_FAILURE;
   }
   const tail = await exec(["tail", "-n", String(lines), paths.logFile], { cwd: "/" });
   if (tail.code !== 0)
     throw new FailureError(`could not read ${paths.logFile}: ${firstLine(tail)}`);
   for (const line of tail.stdout.trimEnd().split("\n")) io.out(line);
   return 0;
-}
-
-function firstLine({ stdout, stderr }: { stdout: string; stderr: string }): string {
-  return (stderr || stdout).trim().split("\n")[0] || "no output";
 }
