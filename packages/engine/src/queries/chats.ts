@@ -87,3 +87,16 @@ function participantsOf(ctx: ReadContext, groupJid: string): Participant[] {
     )
     .all({ groupJid });
 }
+
+/** The display name of a visible chat; null for an unnamed or out-of-scope one. */
+export function chatName(ctx: ReadContext, jid: string): string | null {
+  const scope = scopeSql(ctx.principal, "ch.jid");
+  return (
+    ctx.store.db
+      .query<{ name: string | null }, SqlParams>(
+        `SELECT ${CHAT_NAME} AS name FROM chats AS ch LEFT JOIN contacts AS ct ON ct.jid = ch.jid
+         WHERE ch.jid = $jid AND (${scope.sql})`,
+      )
+      .get({ ...scope.params, jid })?.name ?? null
+  );
+}

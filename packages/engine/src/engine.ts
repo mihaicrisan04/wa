@@ -28,6 +28,8 @@ export interface StartEngineOptions {
   outboxBackoff?: { baseMs: number; maxMs: number };
   /** How often disappearing messages past their expiry are purged. */
   purgeIntervalMs?: number;
+  /** Where MCP `download_media` exports files; `$TMPDIR/wa-export` by default. */
+  exportDir?: string;
   /** Replaces Baileys' media downloader (tests must never reach WhatsApp's CDN). */
   mediaDownload?: MediaCacheOptions["download"];
 }
@@ -102,7 +104,15 @@ export async function startEngine(
 
   let server: Server<undefined> | null = null;
   let adminServer: Server<undefined> | null = null;
-  const deps: ApiDeps = { version: ENGINE_VERSION, logger, store, connection, media, outbox };
+  const deps: ApiDeps = {
+    version: ENGINE_VERSION,
+    logger,
+    store,
+    connection,
+    media,
+    outbox,
+    exportDir: options.exportDir,
+  };
   const apps = {
     tcp: createApp(
       { ...deps, noTimeout: (request) => server?.timeout(request, 0) },

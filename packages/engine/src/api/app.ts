@@ -3,6 +3,7 @@ import { bearerAuth, socketAdmin } from "./auth";
 import type { ApiDeps, AppEnv } from "./context";
 import { errorHandler, notFound } from "./errors";
 import { localOnlyGuard } from "./guard";
+import { mcpRoute } from "../mcp/server";
 import { adminRoutes } from "./routes/admin";
 import { chatRoutes } from "./routes/chats";
 import { healthRoutes } from "./routes/health";
@@ -35,6 +36,10 @@ export function createApp(deps: ApiDeps, transport: Transport) {
   app.route("/v1", messageRoutes(deps));
   app.route("/v1", sendRoutes(deps));
   if (transport.kind === "unix") app.route("/v1/admin", adminRoutes(deps));
+  if (transport.kind === "tcp") {
+    app.use("/mcp", bearerAuth(deps.store));
+    app.all("/mcp", mcpRoute(deps));
+  }
   app.notFound(notFound);
   app.onError(errorHandler(deps.logger));
   return app;

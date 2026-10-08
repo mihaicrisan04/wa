@@ -12,6 +12,9 @@ export type Principal =
       allChats: boolean;
     };
 
+/** A bearer token's principal: the only kind that reaches the TCP routes, `/mcp` included. */
+export type TokenPrincipal = Extract<Principal, { kind: "token" }>;
+
 export const ADMIN: Principal = { kind: "admin" };
 
 export function can(principal: Principal, capability: Capability): boolean {

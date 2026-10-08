@@ -1,3 +1,5 @@
+import type { Exec } from "./exec";
+
 export interface CommandIO {
   out: (line: string) => void;
   err: (line: string) => void;
@@ -6,6 +8,12 @@ export interface CommandIO {
   isTTY?: boolean;
   /** How often `wa link` polls the engine; tests shorten it. */
   pollMs?: number;
+  /** Runs external programs (`claude`); tests record the calls instead. */
+  exec?: Exec;
+  /** How a shell runs this `wa`; detected when absent. */
+  waCommand?: string[];
+  /** Where relative paths start; the process's cwd when absent. */
+  cwd?: string;
 }
 
 export interface Command {
@@ -22,3 +30,6 @@ export const EXIT_FAILURE = 1;
 
 /** A mistake in how the command was called: printed with the usage, exit 2. */
 export class UsageError extends Error {}
+
+/** An expected failure, printed as one line: exit 1. */
+export class FailureError extends Error {}

@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ProfileCapability } from "@wa/sdk";
-import type { Principal } from "./policy";
+import type { TokenPrincipal } from "./policy";
 import type { ProfileSpec, Store, TokenRow } from "./store";
 
 export const RAYCAST_PROFILE: ProfileSpec = {
@@ -52,7 +52,7 @@ export function issueToken(store: Store, profile: string, label: string | null):
 }
 
 /** Revocation and the profile are read on every call: nothing is cached. */
-export function authenticate(store: Store, token: string): Principal | null {
+export function authenticate(store: Store, token: string): TokenPrincipal | null {
   const row = store.tokens.findActive(hashToken(token));
   if (!row) return null;
   const profile = store.profiles.get(row.profile);

@@ -34,7 +34,7 @@ export const SECRET_MARKERS = [
   BOB_TEXT_ID,
 ];
 
-function group(id: string, subject: string, members: string[]): GroupMetadata {
+export function group(id: string, subject: string, members: string[]): GroupMetadata {
   return {
     id,
     subject,

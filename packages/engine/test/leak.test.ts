@@ -37,6 +37,11 @@ let token: string;
 let secretOutboxId: string;
 
 const send = (to: string) => json({ to, text: "probe" });
+const mcpToolsList: RequestInit = {
+  method: "POST",
+  headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
+  body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+};
 
 /** Every route the TCP listener serves must appear here, or the coverage test fails. */
 function cases(): Record<string, Case[]> {
@@ -115,6 +120,8 @@ function cases(): Record<string, Case[]> {
       { path: "/v1/send", init: send("p"), status: 409, contains: [MASTER, LAB] },
     ],
     "GET /v1/outbox/:id": [{ path: () => `/v1/outbox/${secretOutboxId}`, status: 404 }],
+    // tools are probed one by one in mcp-leak.test.ts
+    "ALL /mcp": [{ path: "/mcp", init: mcpToolsList, status: 200, contains: ["read_messages"] }],
   };
 }
 
