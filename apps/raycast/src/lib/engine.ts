@@ -1,7 +1,8 @@
 import { getPreferenceValues, Toast } from "@raycast/api";
 import { createWaClient, engineUrl, type WaClient } from "@wa/sdk";
+import { defaultHome } from "@wa/sdk/paths";
 import { describeError, type ErrorDescription } from "./errors";
-import { defaultHome, parsePort, resolveToken } from "./settings";
+import { parsePort, resolveToken } from "./settings";
 
 export function enginePort(): number {
   return parsePort(getPreferenceValues<Preferences>().port);

@@ -1,6 +1,7 @@
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_PORT } from "@wa/sdk";
+import { defaultHome } from "@wa/sdk/paths";
 import { z } from "zod";
 import packageJson from "../package.json";
 
@@ -24,10 +25,6 @@ const envSchema = z.object({
   WA_PORT: z.coerce.number().int().min(0).max(65_535).optional(),
   WA_LOG_LEVEL: z.enum(LOG_LEVELS).optional(),
 });
-
-export function defaultHome(userHome: string = homedir()): string {
-  return join(userHome, "Library", "Application Support", "wa");
-}
 
 export class ConfigError extends Error {}
 
@@ -74,14 +71,6 @@ export function mediaDir(home: string): string {
 /** Uploaded files waiting to be sent, named by outbox id. */
 export function outboxDir(home: string): string {
   return join(home, "outbox");
-}
-
-export function tokensDir(home: string): string {
-  return join(home, "tokens");
-}
-
-export function raycastTokenPath(home: string): string {
-  return join(tokensDir(home), "raycast.token");
 }
 
 /** Where MCP `download_media` exports files, outside WA_HOME so agents may read them. */

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { ConfigError, DEFAULT_PORT, defaultHome, loadConfig } from "../src/config";
+import { defaultHome } from "@wa/sdk/paths";
+import { ConfigError, DEFAULT_PORT, loadConfig } from "../src/config";
 
 describe("loadConfig", () => {
   test("defaults to the macOS data dir, port 7373 and info logs", () => {

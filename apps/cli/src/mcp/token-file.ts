@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { tokensDir } from "@wa/engine";
+import { tokensDir } from "@wa/sdk/paths";
 import { FailureError } from "../command";
 
 const TOKEN_FORMAT = /^wa_[A-Za-z0-9_-]{43}$/;

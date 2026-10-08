@@ -2,8 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DEFAULT_PORT, engineUrl, WaApiError } from "@wa/sdk";
+import { raycastTokenPath } from "@wa/sdk/paths";
 import { describeError } from "../src/lib/errors";
-import { MissingTokenError, parsePort, raycastTokenPath, resolveToken } from "../src/lib/settings";
+import { MissingTokenError, parsePort, resolveToken } from "../src/lib/settings";
 import { useTempDir } from "./support";
 
 const home = useTempDir();
@@ -21,7 +22,6 @@ describe("token", () => {
 
   test("an empty preference falls back to tokens/raycast.token in WA_HOME", async () => {
     await writeEngineToken("wa_from_file\n");
-    expect(raycastTokenPath(home())).toBe(join(home(), "tokens", "raycast.token"));
     expect(await resolveToken("", home())).toBe("wa_from_file");
     expect(await resolveToken("   ", home())).toBe("wa_from_file");
     expect(await resolveToken(undefined, home())).toBe("wa_from_file");

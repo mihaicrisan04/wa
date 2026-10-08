@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import type { BaileysEventMap, WAMessage } from "@whiskeysockets/baileys";
 import type { ProfileCapability } from "@wa/sdk";
-import { raycastTokenPath } from "../config";
+import { raycastTokenPath } from "@wa/sdk/paths";
 import { startEngine, type Engine, type StartEngineOptions } from "../engine";
 import { issueToken } from "../tokens";
 import type { SocketHooks } from "../whatsapp/client";

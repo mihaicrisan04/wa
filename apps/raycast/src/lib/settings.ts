@@ -1,16 +1,6 @@
 import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import { DEFAULT_PORT } from "@wa/sdk";
-
-export function defaultHome(): string {
-  return join(homedir(), "Library", "Application Support", "wa");
-}
-
-/** Written by the engine at every start for the built-in `raycast` profile. */
-export function raycastTokenPath(home: string): string {
-  return join(home, "tokens", "raycast.token");
-}
+import { raycastTokenPath } from "@wa/sdk/paths";
 
 export class MissingTokenError extends Error {
   constructor(readonly path: string) {

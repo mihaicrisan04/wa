@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createWaClient, MAX_UPLOAD_BYTES, WaApiError, type WaClient } from "@wa/sdk";
+import { defaultHome, raycastTokenPath } from "@wa/sdk/paths";
 import { fakeMediaDownload, ME_PN, startApi, type ApiHarness } from "../src/testing";
 import { MASTER, MASTER_IMAGE_ID, MASTER_TEXT_ID, worldEvents } from "./support/world";
 
@@ -122,4 +123,14 @@ test("an error body that isn't the engine's shape becomes http_error", async () 
       .catch((err) => err);
     expect(error).toMatchObject({ status: 502, code: "http_error", candidates: [] });
   }
+});
+
+describe("@wa/sdk paths", () => {
+  test("the default home sits under the user's Application Support", () => {
+    expect(defaultHome("/Users/me")).toBe("/Users/me/Library/Application Support/wa");
+  });
+
+  test("the raycast token lives in WA_HOME/tokens", () => {
+    expect(raycastTokenPath("/tmp/wa home")).toBe("/tmp/wa home/tokens/raycast.token");
+  });
 });
