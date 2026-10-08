@@ -25,12 +25,14 @@ export interface OutboxOptions {
   client: () => WhatsAppClient | null;
   me: () => OwnIdentity | null;
   backoff?: Backoff;
+  /** Failed sends before an entry is given up on (8). */
+  maxAttempts?: number;
 }
 
 /** How long an entry may wait before it expires instead of going out late. */
 const TTL_SECONDS = 60 * 60;
 /** Failed sends before an entry is given up on, so one bad entry can't hold up the queue. */
-const MAX_ATTEMPTS = 8;
+const DEFAULT_MAX_ATTEMPTS = 8;
 
 /**
  * The persisted send queue. Each entry gets its WhatsApp message id when queued and reuses it on
@@ -133,7 +135,7 @@ export class Outbox {
       store.outbox.finish(row.id, "sent");
     } catch (err) {
       const attempts = row.attempts + 1;
-      if (attempts < MAX_ATTEMPTS) {
+      if (attempts < (this.options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS)) {
         logger.warn({ err, outboxId: row.id, attempts }, "sending failed, will retry");
         store.outbox.finish(row.id, "queued", "sending failed, retrying");
         return false;

@@ -1,31 +1,22 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { createLogger, startEngine, type Engine } from "@wa/engine";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
+  ANA_PN,
   buildMessage,
   content,
-  FakeWhatsAppClient,
+  eventually,
+  GROUP,
   makeTempHome,
-  type TempHome,
+  ME,
+  startApi,
+  type ApiHarness,
 } from "@wa/engine/testing";
-import { runCli } from "../src/cli";
+import { run as runWa } from "./support";
 
-const ME = { id: "40700000001:7@s.whatsapp.net", lid: "100000000000001:7@lid" };
-const ANA = "40700000002@s.whatsapp.net";
-const GROUP = "120363000000000001@g.us";
 const OTHER_GROUP = "120363000000000002@g.us";
+const CONNECTION_REPLACED = 440;
 
-async function run(argv: string[], env: Record<string, string | undefined>) {
-  const out: string[] = [];
-  const err: string[] = [];
-  const code = await runCli(argv, {
-    out: (line) => out.push(line),
-    err: (line) => err.push(line),
-    env,
-    pollMs: 5,
-    historyIdleMs: 50,
-  });
-  return { code, out: out.join("\n"), err: err.join("\n") };
-}
+const run = (argv: string[], env: Record<string, string | undefined>) =>
+  runWa(argv, { env, historyIdleMs: 50 });
 
 describe("argument checks happen before talking to the engine", () => {
   const env = { WA_HOME: "/nonexistent/wa" };
@@ -59,74 +50,40 @@ describe("argument checks happen before talking to the engine", () => {
 
   test("a stopped engine is a clear error", async () => {
     const temp = await makeTempHome();
-    const result = await run(["status"], { WA_HOME: temp.home });
-    expect(result).toMatchObject({ code: 1 });
-    expect(result.err).toContain("the wa engine is not running");
-    expect(result.err).toContain("`wa service install`");
-    await temp.cleanup();
+    try {
+      const result = await run(["status"], { WA_HOME: temp.home });
+      expect(result).toMatchObject({ code: 1 });
+      expect(result.err).toContain("the wa engine is not running");
+      expect(result.err).toContain("`wa service install`");
+    } finally {
+      await temp.cleanup();
+    }
   });
 });
 
-test("link stops at once when another session takes over the pairing", async () => {
-  const CONNECTION_REPLACED = 440;
-  const temp = await makeTempHome();
-  let client: FakeWhatsAppClient | undefined;
-  const engine = await startEngine(temp.config, {
-    client: () => (client = new FakeWhatsAppClient()),
-    logger: createLogger("silent"),
-  });
-  try {
-    const linking = run(["link"], { WA_HOME: temp.home });
-    while (engine.connection.status().state !== "linking") await Bun.sleep(2);
-    client!.close(CONNECTION_REPLACED);
-    const result = await linking;
-    expect(result.code).toBe(1);
-    expect(result.err).toBe("wa link: another session took over this WhatsApp link (`wa status`)");
-  } finally {
-    await engine.stop();
-    await temp.cleanup();
-  }
-});
-
-describe("against a running engine", () => {
-  let temp: TempHome;
-  let engine: Engine;
-  let client: FakeWhatsAppClient;
+describe("wa link", () => {
+  let api: ApiHarness;
   let env: Record<string, string>;
 
-  beforeAll(async () => {
-    temp = await makeTempHome();
-    env = { WA_HOME: temp.home };
-    engine = await startEngine(temp.config, {
-      client: () => (client = new FakeWhatsAppClient(client?.user)),
-      logger: createLogger("silent"),
-    });
+  beforeEach(async () => {
+    api = await startApi({ linked: false });
+    env = { WA_HOME: api.temp.home };
   });
 
-  afterAll(async () => {
-    await engine.stop();
-    await temp.cleanup();
-  });
+  afterEach(() => api.stop());
 
-  test("a second serve on the same WA_HOME is a one-line error", async () => {
-    const result = await run(["serve"], env);
-    expect(result).toMatchObject({ code: 1 });
-    expect(result.err).toBe(
-      `wa serve: another wa engine is already running on ${engine.socketPath}`,
-    );
-  });
+  const pairingStarted = () =>
+    eventually(() => api.engine.connection.status().state === "linking", "the pairing to start");
 
-  test("link shows the QR and waits for the link", async () => {
+  test("shows the QR and waits for the link", async () => {
     const linking = run(["link"], env);
-    while (engine.connection.status().state !== "linking") await Bun.sleep(2);
-    client.showQr("2@cli-test-qr");
-    await client.idle();
-    while (!engine.connection.status().qr) await Bun.sleep(2);
-    await Bun.sleep(20);
-    client.pair(ME);
-    await client.idle();
-    client.open();
-    await client.idle();
+    await pairingStarted();
+    api.client().showQr("2@cli-test-qr");
+    await eventually(() => linking.printed().includes("scan it in WhatsApp"), "the QR");
+    api.client().pair(ME);
+    await api.client().idle();
+    api.client().open();
+    await api.client().idle();
     const result = await linking;
     expect(result.code).toBe(0);
     expect(result.out).toContain("scan it in WhatsApp");
@@ -137,9 +94,25 @@ describe("against a running engine", () => {
     expect(again.err).toContain("already linked as +40700000001; use --relink");
   });
 
-  test("status, chats, read and search", async () => {
-    client.emitBatch({
-      "contacts.upsert": [{ id: ANA, name: "Ana" }],
+  test("stops at once when another session takes over the pairing", async () => {
+    const linking = run(["link"], env);
+    await pairingStarted();
+    api.client().close(CONNECTION_REPLACED);
+    const result = await linking;
+    expect(result.code).toBe(1);
+    expect(result.err).toBe("wa link: another session took over this WhatsApp link (`wa status`)");
+  });
+});
+
+describe("against a running engine", () => {
+  let api: ApiHarness;
+  let env: Record<string, string>;
+
+  beforeEach(async () => {
+    api = await startApi();
+    env = { WA_HOME: api.temp.home };
+    await api.emit({
+      "contacts.upsert": [{ id: ANA_PN, name: "Ana" }],
       "groups.upsert": [
         { id: GROUP, subject: "Master PP", owner: undefined, participants: [] },
         { id: OTHER_GROUP, subject: "Master Lab", owner: undefined, participants: [] },
@@ -149,17 +122,27 @@ describe("against a running engine", () => {
         messages: [
           buildMessage({
             chat: GROUP,
-            participant: ANA,
+            participant: ANA_PN,
             ts: 1_700_000_000,
             message: content.text("tema la PP\nnew line"),
           }),
-          buildMessage({ chat: ANA, ts: 1_700_000_100, message: content.text("salut") }),
+          buildMessage({ chat: ANA_PN, ts: 1_700_000_100, message: content.text("salut") }),
         ],
       },
     });
-    await client.idle();
-    await engine.ingest.drain();
+  });
 
+  afterEach(() => api.stop());
+
+  test("a second serve on the same WA_HOME is a one-line error", async () => {
+    const result = await run(["serve"], env);
+    expect(result).toMatchObject({ code: 1 });
+    expect(result.err).toBe(
+      `wa serve: another wa engine is already running on ${api.engine.socketPath}`,
+    );
+  });
+
+  test("status, chats, read and search", async () => {
     expect((await run(["status"], env)).out).toMatch(/state\s+open/);
     expect(JSON.parse((await run(["status", "--json"], env)).out)).toMatchObject({ state: "open" });
 
@@ -187,10 +170,10 @@ describe("against a running engine", () => {
     );
     const added = await run(["collections", "add", "master", "Master PP", "+40 700 000 002"], env);
     expect(added.out).toContain("master — uni");
-    expect(added.out).toContain(ANA);
+    expect(added.out).toContain(ANA_PN);
     expect((await run(["collections", "ls"], env)).out).toMatch(/master\s+2 chats\s+uni/);
     const removed = await run(["collections", "rm", "master", "+40700000002"], env);
-    expect(removed.out).not.toContain(ANA);
+    expect(removed.out).not.toContain(ANA_PN);
     expect(
       JSON.parse((await run(["collections", "show", "master", "--json"], env)).out),
     ).toMatchObject({
@@ -216,9 +199,7 @@ describe("against a running engine", () => {
     expect(created.out).toMatch(/^wa_[\w-]{43}$/);
     expect(created.err).toContain("shown once");
     const token = created.out;
-    const response = await fetch(`http://127.0.0.1:${engine.port}/v1/chats`, {
-      headers: { authorization: `Bearer ${token}` },
-    });
+    const response = await api.http("/v1/chats", token);
     expect(((await response.json()) as { items: unknown[] }).items).toHaveLength(1);
 
     const id = created.err.match(/token (t_\w+)/)![1]!;

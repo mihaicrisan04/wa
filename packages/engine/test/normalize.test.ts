@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { proto, toNumber } from "@whiskeysockets/baileys";
-import { buildMessage, content, keyOf } from "../src/testing";
+import { ANA_LID, ANA_PN, buildMessage, content, GROUP, keyOf, ME_PN } from "../src/testing";
 import { actionFromUpdate, normalizeMessage, type JidResolver } from "../src/whatsapp/normalize";
 import { parseRaw } from "../src/whatsapp/raw";
-import { ANA_LID, ANA_PN, GROUP, ME_PN } from "./support/jids";
 
 const resolve: JidResolver = {
   chat: (jid) => (jid === ANA_LID ? ANA_PN : jid),

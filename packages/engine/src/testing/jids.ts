@@ -1,4 +1,4 @@
-import type { FakeIdentity } from "../../src/testing";
+import type { FakeIdentity } from "./fake-client";
 
 export const ME: FakeIdentity = {
   id: "40700000001:7@s.whatsapp.net",

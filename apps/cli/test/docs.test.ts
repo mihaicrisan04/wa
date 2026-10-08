@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { helpText, runCli } from "../src/cli";
+import { helpText } from "../src/cli";
+import { run } from "./support";
 
 const ROOT = join(import.meta.dir, "..", "..", "..");
 const DOCS = ["README.md", "docs/architecture.md", "docs/mcp.md", "docs/security.md"];
@@ -22,16 +23,8 @@ function codeOf(markdown: string): string[] {
 
 /** The `usage:` lines of `wa <command> --help`, as `wa ...`. */
 async function usageLines(command: string): Promise<string[]> {
-  const out: string[] = [];
-  await runCli([command, "--help"], {
-    out: (line) => out.push(line),
-    err: () => {},
-    env: { WA_HOME: "/nonexistent/wa" },
-  });
-  return out
-    .join("\n")
-    .split("\n")
-    .flatMap((line) => /^(?:usage: | {2})(wa .*)$/.exec(line)?.[1] ?? []);
+  const { out } = await run([command, "--help"], { env: { WA_HOME: "/nonexistent/wa" } });
+  return out.split("\n").flatMap((line) => /^(?:usage: | {2})(wa .*)$/.exec(line)?.[1] ?? []);
 }
 
 describe("docs match wa --help", () => {

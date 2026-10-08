@@ -15,11 +15,9 @@ import {
   type WAMessageKey,
   toNumber,
 } from "@whiskeysockets/baileys";
-import pino from "pino";
 import type { WhatsAppClient } from "../whatsapp/client";
-import { fixtureId, historySet } from "./fixtures";
-
-const silent = pino({ level: "silent" });
+import { fixtureId, historySet, HistorySyncType } from "./fixtures";
+import { silentLogger } from "./logger";
 
 /** `id` is the phone-number jid, e.g. `40700000001:3@s.whatsapp.net`. */
 export type FakeIdentity = Pick<Contact, "id" | "lid" | "name">;
@@ -119,7 +117,7 @@ export class FakeWhatsAppClient implements WhatsAppClient {
 
   constructor(identity?: FakeIdentity) {
     if (identity) this.user = identity;
-    const buffer = makeEventBuffer(silent);
+    const buffer = makeEventBuffer(silentLogger);
     this.ev = {
       ...buffer,
       process: (handler) => buffer.process((events) => this.track(handler(events))),
@@ -184,7 +182,7 @@ export class FakeWhatsAppClient implements WhatsAppClient {
       "messaging-history.set",
       historySet({
         messages,
-        syncType: proto.HistorySync.HistorySyncType.ON_DEMAND,
+        syncType: HistorySyncType.ON_DEMAND,
         isLatest: false,
         progress: null,
         peerDataRequestSessionId: requestId,
@@ -212,7 +210,7 @@ export class FakeWhatsAppClient implements WhatsAppClient {
         mediaUrl: "https://mmg.whatsapp.net/fixture",
         directPath: "/v/t62.fixture",
       }),
-      logger: silent,
+      logger: silentLogger,
     });
     this.sent.push({ jid, content, options, message });
     this.emit("messages.upsert", { messages: [message], type: "append" });

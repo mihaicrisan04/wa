@@ -1,22 +1,20 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { proto } from "@whiskeysockets/baileys";
 import type { HistoryPage } from "../src/ingest";
 import { readHistorySync } from "../src/queries";
-import { buildChat, buildMessage, content, historySet } from "../src/testing";
 import {
   ANA_LID,
   ANA_PN,
   BOB_LID,
   BOB_PN,
+  buildChat,
+  buildMessage,
+  content,
   EVE_PN,
   GROUP,
-  count,
-  harness,
-  messageRows,
-  type Harness,
-} from "./support/harness";
-
-const { HistorySyncType } = proto.HistorySync;
+  historySet,
+  HistorySyncType,
+} from "../src/testing";
+import { count, harness, messageRows, type Harness } from "./support/harness";
 
 let h: Harness;
 

@@ -1,20 +1,10 @@
-import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { ENGINE_VERSION, openStore } from "@wa/engine";
-import { helpText, runCli } from "../src/cli";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { databasePath, ENGINE_VERSION, openStore } from "@wa/engine";
+import { ANA_PN, makeTempHome, messageRecord, type TempHome } from "@wa/engine/testing";
+import { helpText } from "../src/cli";
+import { run as runWa } from "./support";
 
-async function run(argv: string[], env: Record<string, string | undefined> = {}) {
-  const out: string[] = [];
-  const err: string[] = [];
-  const code = await runCli(argv, {
-    out: (line) => out.push(line),
-    err: (line) => err.push(line),
-    env,
-  });
-  return { code, out: out.join("\n"), err: err.join("\n") };
-}
+const run = (argv: string[], env: Record<string, string | undefined> = {}) => runWa(argv, { env });
 
 describe("wa", () => {
   test("no command prints usage and exits 2", async () => {
@@ -68,35 +58,38 @@ describe("wa serve", () => {
 });
 
 describe("wa reindex", () => {
+  let temp: TempHome;
+
+  beforeEach(async () => {
+    temp = await makeTempHome();
+  });
+
+  afterEach(() => temp.cleanup());
+
   test("reports when there is no store yet", async () => {
-    const home = await mkdtemp(join(tmpdir(), "wa cli "));
-    try {
-      const result = await run(["reindex"], { WA_HOME: home });
-      expect(result).toMatchObject({ code: 0, out: "nothing to reindex: no message store yet" });
-    } finally {
-      await rm(home, { recursive: true, force: true });
-    }
+    const result = await run(["reindex"], { WA_HOME: temp.home });
+    expect(result).toMatchObject({ code: 0, out: "nothing to reindex: no message store yet" });
   });
 
   test("re-derives stored messages", async () => {
-    const home = await mkdtemp(join(tmpdir(), "wa cli "));
-    try {
-      const store = openStore(join(home, "wa.db"));
-      store.db.run(
-        `INSERT INTO messages (chat_jid, id, from_me, ts, type, source, raw) VALUES
-         ('40700000002@s.whatsapp.net', '3EB0X', 0, 1, 'junk', 'live',
-          '{"key":{"remoteJid":"40700000002@s.whatsapp.net","id":"3EB0X"},"messageTimestamp":"1","message":{"conversation":"hi"}}')`,
-      );
-      store.close();
+    const store = openStore(databasePath(temp.home));
+    store.messages.upsert(
+      messageRecord({
+        type: "junk",
+        raw: JSON.stringify({
+          key: { remoteJid: ANA_PN, id: "3EB0A" },
+          messageTimestamp: "1",
+          message: { conversation: "hi" },
+        }),
+      }),
+    );
+    store.close();
 
-      const result = await run(["reindex"], { WA_HOME: home });
-      expect(result).toMatchObject({
-        code: 0,
-        out: "reindexed 1 messages (0 without a raw payload)",
-      });
-    } finally {
-      await rm(home, { recursive: true, force: true });
-    }
+    const result = await run(["reindex"], { WA_HOME: temp.home });
+    expect(result).toMatchObject({
+      code: 0,
+      out: "reindexed 1 messages (0 without a raw payload)",
+    });
   });
 
   test("is listed in --help", async () => {

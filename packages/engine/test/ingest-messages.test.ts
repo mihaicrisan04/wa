@@ -1,16 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { proto } from "@whiskeysockets/baileys";
-import { buildMessage, content, keyOf } from "../src/testing";
-import {
-  ANA_PN,
-  BOB_PN,
-  GROUP,
-  ME_PN,
-  count,
-  harness,
-  messageRows,
-  type Harness,
-} from "./support/harness";
+import { ANA_PN, BOB_PN, buildMessage, content, GROUP, keyOf, ME_PN } from "../src/testing";
+import { count, harness, messageRows, type Harness } from "./support/harness";
 
 let h: Harness;
 
@@ -18,9 +9,6 @@ beforeEach(() => {
   h = harness();
 });
 afterEach(() => h.close());
-
-const upsert = (...messages: ReturnType<typeof buildMessage>[]) =>
-  h.emit({ "messages.upsert": { messages, type: "notify" } });
 
 describe("messages.upsert", () => {
   test("stores messages with Long timestamps and creates the chat", async () => {
@@ -30,7 +18,7 @@ describe("messages.upsert", () => {
       pushName: "Ana",
       message: content.text("salut"),
     });
-    await upsert(message);
+    await h.upsert(message);
 
     expect(messageRows(h.store, ANA_PN)).toEqual([
       expect.objectContaining({
@@ -47,7 +35,7 @@ describe("messages.upsert", () => {
   test("the sent echo is deduplicated on (chat, id)", async () => {
     const sent = await h.client.sendMessage(ANA_PN, { text: "hey" }, { messageId: "3EB0SENT" });
     await h.client.idle();
-    await upsert(sent!);
+    await h.upsert(sent!);
     expect(messageRows(h.store, ANA_PN)).toEqual([
       expect.objectContaining({ id: "3EB0SENT", text: "hey", sender_jid: ME_PN }),
     ]);
@@ -60,12 +48,12 @@ describe("messages.upsert", () => {
       message: null,
       stubType: proto.WebMessageInfo.StubType.CIPHERTEXT,
     });
-    await upsert(stub);
+    await h.upsert(stub);
     expect(messageRows(h.store, ANA_PN)).toEqual([
       expect.objectContaining({ type: "placeholder", text: null }),
     ]);
 
-    await upsert(
+    await h.upsert(
       buildMessage({ chat: ANA_PN, id: "3EB0RETRY", message: content.text("decrypted") }),
     );
     expect(messageRows(h.store, ANA_PN)).toEqual([
@@ -76,7 +64,7 @@ describe("messages.upsert", () => {
 
   test("carriers and status broadcasts never become rows", async () => {
     const target = buildMessage({ chat: ANA_PN, message: content.text("hi") });
-    await upsert(
+    await h.upsert(
       target,
       buildMessage({ chat: ANA_PN, message: content.reaction(keyOf(target), "👍") }),
       buildMessage({
@@ -90,7 +78,7 @@ describe("messages.upsert", () => {
   });
 
   test("view-once media is stored without raw and flagged", async () => {
-    await upsert(
+    await h.upsert(
       buildMessage({ chat: ANA_PN, id: "3EB0ONCE", message: content.viewOnce(content.image()) }),
     );
     expect(h.store.messages.get({ chatJid: ANA_PN, id: "3EB0ONCE" })).toMatchObject({
@@ -101,7 +89,7 @@ describe("messages.upsert", () => {
   });
 
   test("media metadata is recorded", async () => {
-    await upsert(
+    await h.upsert(
       buildMessage({
         chat: ANA_PN,
         id: "3EB0DOC",
@@ -118,7 +106,7 @@ describe("messages.upsert", () => {
   });
 
   test("own chat is kind self", async () => {
-    await upsert(
+    await h.upsert(
       buildMessage({ chat: ME_PN, fromMe: true, message: content.text("note to self") }),
     );
     expect(h.store.chats.get(ME_PN)?.kind).toBe("self");
@@ -132,7 +120,7 @@ describe("deletes", () => {
       id: "3EB0DEL",
       message: content.document({ caption: "notițe" }),
     });
-    await upsert(message, buildMessage({ chat: ANA_PN, id: "3EB0KEEP" }));
+    await h.upsert(message, buildMessage({ chat: ANA_PN, id: "3EB0KEEP" }));
     await h.emit({ "messages.delete": { keys: [keyOf(message)] } });
 
     expect(messageRows(h.store, ANA_PN).map((row) => row.id)).toEqual(["3EB0KEEP"]);
@@ -141,7 +129,7 @@ describe("deletes", () => {
   });
 
   test("clearing a chat removes all its messages but keeps the chat", async () => {
-    await upsert(
+    await h.upsert(
       buildMessage({ chat: ANA_PN }),
       buildMessage({ chat: ANA_PN }),
       buildMessage({ chat: BOB_PN }),
@@ -160,7 +148,9 @@ describe("deletes", () => {
         { id: GROUP, subject: "PP", owner: undefined, participants: [{ id: ANA_PN }] },
       ],
     });
-    await upsert(buildMessage({ chat: GROUP, participant: ANA_PN, message: content.text("bye") }));
+    await h.upsert(
+      buildMessage({ chat: GROUP, participant: ANA_PN, message: content.text("bye") }),
+    );
     await h.emit({ "chats.delete": [GROUP] });
     expect(h.store.chats.get(GROUP)).toBeNull();
     expect(messageRows(h.store, GROUP)).toEqual([]);
@@ -172,7 +162,7 @@ describe("deletes", () => {
 describe("disappearing messages", () => {
   test("expired ones are purged", async () => {
     const now = Math.floor(Date.now() / 1000);
-    await upsert(
+    await h.upsert(
       buildMessage({
         chat: ANA_PN,
         id: "3EB0POOF",
@@ -199,7 +189,7 @@ describe("robustness", () => {
         throw new Error("corrupt");
       },
     });
-    await upsert(
+    await h.upsert(
       broken,
       buildMessage({ chat: ANA_PN, id: "3EB0FINE", message: content.text("fine") }),
     );
@@ -213,7 +203,7 @@ describe("robustness", () => {
       if (record.id === "3EB0FAIL") throw new Error("disk hiccup");
       return applied;
     };
-    await upsert(
+    await h.upsert(
       buildMessage({ chat: ANA_PN, id: "3EB0FAIL", message: content.text("half written") }),
       buildMessage({ chat: ANA_PN, id: "3EB0OK", message: content.text("whole") }),
     );

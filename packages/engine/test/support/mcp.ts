@@ -1,7 +1,7 @@
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { Client as LegacyClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport as LegacyTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { ApiHarness } from "./api";
+import type { ApiHarness } from "../../src/testing";
 
 export interface ToolCall {
   isError: boolean;
@@ -20,6 +20,13 @@ export interface McpSession {
   close(): Promise<void>;
 }
 
+const openSessions = new Set<McpSession>();
+
+/** Closes the sessions tests left open, also when they failed before closing them; for `afterEach`. */
+export async function closeOpenSessions(): Promise<void> {
+  await Promise.all([...openSessions].map((session) => session.close()));
+}
+
 /** An MCP client on `/mcp` with `token`; `legacy` uses the v1 `@modelcontextprotocol/sdk` client. */
 export async function connectMcp(
   api: ApiHarness,
@@ -34,7 +41,7 @@ export async function connectMcp(
     ? new LegacyTransport(url, { requestInit })
     : new StreamableHTTPClientTransport(url, { requestInit });
   await client.connect(transport as never);
-  return {
+  const session: McpSession = {
     client,
     async tools() {
       const { tools } = await client.listTools();
@@ -54,8 +61,13 @@ export async function connectMcp(
         serialized: JSON.stringify(result),
       };
     },
-    close: () => client.close(),
+    async close() {
+      openSessions.delete(session);
+      await client.close();
+    },
   };
+  openSessions.add(session);
+  return session;
 }
 
 /** The lines between the fence, without the note and the fence itself. */

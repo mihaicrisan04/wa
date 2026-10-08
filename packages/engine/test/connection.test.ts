@@ -3,7 +3,17 @@ import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { DisconnectReason } from "@whiskeysockets/baileys";
 import pino from "pino";
-import { FakeWhatsAppClient, makeTempHome, type FakeIdentity, type TempHome } from "../src/testing";
+import {
+  eventually,
+  FakeWhatsAppClient,
+  makeTempHome,
+  ME,
+  ME_LID,
+  ME_PN,
+  silentLogger,
+  type TempHome,
+} from "../src/testing";
+import type { Logger } from "../src/logger";
 import {
   AlreadyLinkedError,
   PREVIOUS_AUTH_DIR,
@@ -12,8 +22,6 @@ import {
 } from "../src/whatsapp/connection";
 
 type CreateClient = ConnectionOptions["createClient"];
-
-const ME: FakeIdentity = { id: "40700000001:7@s.whatsapp.net", lid: "123456789:7@lid", name: "Me" };
 
 let temp: TempHome;
 let clients: FakeWhatsAppClient[];
@@ -25,10 +33,13 @@ function newFakeClient(): FakeWhatsAppClient {
   return client;
 }
 
-function newConnection(createClient: CreateClient = newFakeClient): WhatsAppConnection {
+function newConnection(
+  createClient: CreateClient = newFakeClient,
+  logger: Logger = silentLogger,
+): WhatsAppConnection {
   return new WhatsAppConnection({
     home: temp.home,
-    logger: pino({ level: "silent" }),
+    logger,
     createClient,
     backoff: { baseMs: 5, maxMs: 20 },
   });
@@ -57,14 +68,6 @@ async function settle(): Promise<void> {
   for (const client of clients) await client.idle();
 }
 
-async function waitFor(condition: () => boolean, timeoutMs = 1_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!condition()) {
-    if (Date.now() > deadline) throw new Error("timed out waiting for condition");
-    await Bun.sleep(2);
-  }
-}
-
 /** Links through the QR flow: pairing stores creds, then WhatsApp asks for a restart. */
 async function linkAndOpen(): Promise<void> {
   await connection.link();
@@ -72,6 +75,19 @@ async function linkAndOpen(): Promise<void> {
   await settle();
   latest().open();
   await settle();
+}
+
+/** A logger that records the delay of every scheduled reconnect. */
+function reconnectLogger(delays: number[]): Logger {
+  return pino(
+    { level: "info" },
+    {
+      write(line: string) {
+        const entry = JSON.parse(line) as { msg: string; delay?: number };
+        if (entry.msg === "reconnecting to WhatsApp") delays.push(entry.delay!);
+      },
+    },
+  );
 }
 
 beforeEach(async () => {
@@ -100,7 +116,7 @@ describe("starting", () => {
     connection = newConnection();
     await connection.start();
     expect(connection.status().state).toBe("connecting");
-    expect(connection.me()).toEqual({ pn: "40700000001@s.whatsapp.net", lid: "123456789@lid" });
+    expect(connection.me()).toEqual({ pn: ME_PN, lid: ME_LID });
   });
 });
 
@@ -124,7 +140,7 @@ describe("linking", () => {
     expect(clients).toHaveLength(2);
     expect(clients[0]!.ended).toBe(true);
     expect(connection.status()).toMatchObject({ state: "open", qr: null });
-    expect(connection.me()).toEqual({ pn: "40700000001@s.whatsapp.net", lid: "123456789@lid" });
+    expect(connection.me()).toEqual({ pn: ME_PN, lid: ME_LID });
     expect(opened).toBe(1);
     const creds = await Bun.file(join(temp.home, "auth", "creds.json")).json();
     expect(creds.me.id).toBe(ME.id);
@@ -229,11 +245,30 @@ describe("disconnects", () => {
     expect(connection.status().state).toBe("reconnecting");
     expect(old.ended).toBe(true);
 
-    await waitFor(() => clients.length === 3);
+    await eventually(() => clients.length === 3, "the reconnect");
     expect(connection.status().state).toBe("connecting");
     latest().open();
     await settle();
     expect(connection.status().state).toBe("open");
+  });
+
+  test("reconnect delays double up to the cap and start over once connected", async () => {
+    const delays: number[] = [];
+    await connection.stop();
+    connection = newConnection(newFakeClient, reconnectLogger(delays));
+    await connection.start();
+    for (const reconnects of [1, 2, 3, 4]) {
+      latest().close(DisconnectReason.connectionLost);
+      await settle();
+      await eventually(() => delays.length === reconnects, "the reconnect to be scheduled");
+      await eventually(() => connection.status().state === "connecting", "the reconnect");
+    }
+    latest().open();
+    await settle();
+    latest().close(DisconnectReason.connectionLost);
+    await settle();
+    await eventually(() => delays.length === 5, "the reconnect after opening");
+    expect(delays).toEqual([5, 10, 20, 20, 5]);
   });
 
   test("events from a retired socket are ignored", async () => {
@@ -274,7 +309,7 @@ describe("socket creation failures", () => {
 
   test("a failure after stop does not reconnect", async () => {
     const linking = connection.link();
-    await waitFor(() => attempts.length === 1);
+    await eventually(() => attempts.length === 1, "the first attempt");
     await connection.stop();
     attempts[0]!.reject(new Error("socket failed"));
     await linking;
@@ -287,7 +322,7 @@ describe("socket creation failures", () => {
 
   test("a creation that finishes after stop is ended right away", async () => {
     const linking = connection.link();
-    await waitFor(() => attempts.length === 1);
+    await eventually(() => attempts.length === 1, "the first attempt");
     await connection.stop();
     attempts[0]!.resolve();
     await linking;
@@ -298,15 +333,15 @@ describe("socket creation failures", () => {
 
   test("a failed linking attempt retries as linking", async () => {
     const linking = connection.link();
-    await waitFor(() => attempts.length === 1);
+    await eventually(() => attempts.length === 1, "the first attempt");
     attempts[0]!.reject(new Error("socket failed"));
     await linking;
     expect(connection.status().state).toBe("reconnecting");
 
-    await waitFor(() => attempts.length === 2);
+    await eventually(() => attempts.length === 2, "the retry");
     expect(connection.status().state).toBe("linking");
     attempts[1]!.resolve();
-    await waitFor(() => connection.client() !== null);
+    await eventually(() => connection.client() !== null, "the socket");
     latest().showQr("2@qr-retry");
     await settle();
     expect(connection.status()).toMatchObject({ state: "linking", qr: "2@qr-retry" });

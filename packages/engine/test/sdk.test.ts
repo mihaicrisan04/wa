@@ -1,10 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { readFile } from "node:fs/promises";
-import { Readable } from "node:stream";
 import { createWaClient, MAX_UPLOAD_BYTES, WaApiError, type WaClient } from "@wa/sdk";
-import { raycastTokenPath } from "../src/config";
-import { startApi, type ApiHarness } from "./support/api";
-import { ME_PN } from "./support/jids";
+import { fakeMediaDownload, ME_PN, startApi, type ApiHarness } from "../src/testing";
 import { MASTER, MASTER_IMAGE_ID, MASTER_TEXT_ID, worldEvents } from "./support/world";
 
 let api: ApiHarness;
@@ -13,11 +9,13 @@ let admin: WaClient;
 
 beforeAll(async () => {
   api = await startApi({
-    engine: { mediaDownload: (async () => Readable.from([Buffer.from("jpeg")])) as never },
+    engine: { mediaDownload: fakeMediaDownload(Buffer.from("jpeg")) },
   });
   await api.emit(worldEvents());
-  const token = (await readFile(raycastTokenPath(api.temp.home), "utf8")).trim();
-  wa = createWaClient({ baseUrl: `http://127.0.0.1:${api.engine.port}`, token });
+  wa = createWaClient({
+    baseUrl: `http://127.0.0.1:${api.engine.port}`,
+    token: await api.raycastToken(),
+  });
   admin = createWaClient({
     baseUrl: "http://localhost",
     fetch: (input, init) => fetch(input, { ...init, unix: api.engine.socketPath }),

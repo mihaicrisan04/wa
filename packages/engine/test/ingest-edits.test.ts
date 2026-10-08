@@ -1,14 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { buildMessage, content, historySet, keyOf } from "../src/testing";
 import {
   ANA_LID,
   ANA_PN,
+  buildMessage,
+  content,
   EVE_PN,
   GROUP,
-  harness,
-  messageRows,
-  type Harness,
-} from "./support/harness";
+  historySet,
+  keyOf,
+} from "../src/testing";
+import { harness, messageRows, type Harness } from "./support/harness";
 
 let h: Harness;
 
@@ -16,9 +17,6 @@ beforeEach(() => {
   h = harness();
 });
 afterEach(() => h.close());
-
-const upsert = (...messages: ReturnType<typeof buildMessage>[]) =>
-  h.emit({ "messages.upsert": { messages, type: "notify" } });
 
 describe("edits", () => {
   const original = () =>
@@ -32,8 +30,8 @@ describe("edits", () => {
 
   test("a carrier from the sender edits the stored message", async () => {
     const target = original();
-    await upsert(target);
-    await upsert(
+    await h.upsert(target);
+    await h.upsert(
       buildMessage({
         chat: GROUP,
         participant: ANA_PN,
@@ -49,7 +47,7 @@ describe("edits", () => {
   });
 
   test("a live update from the sender edits the stored message", async () => {
-    await upsert(original());
+    await h.upsert(original());
     await h.emit({
       "messages.update": [
         {
@@ -66,9 +64,9 @@ describe("edits", () => {
 
   test("the sender addressed by LID edits the message stored under the PN", async () => {
     const target = original();
-    await upsert(target);
+    await h.upsert(target);
     const lidKey = { participant: ANA_LID, participantAlt: ANA_PN, addressingMode: "lid" as const };
-    await upsert(
+    await h.upsert(
       buildMessage({ chat: GROUP, ...lidKey, message: content.edit(keyOf(target), "v2") }),
     );
     expect(messageRows(h.store, GROUP)[0]).toMatchObject({ text: "v2" });
@@ -89,8 +87,8 @@ describe("edits", () => {
 
   test("a spoofed edit from someone else is ignored", async () => {
     const target = original();
-    await upsert(target);
-    await upsert(
+    await h.upsert(target);
+    await h.upsert(
       buildMessage({
         chat: GROUP,
         participant: EVE_PN,
@@ -167,7 +165,7 @@ describe("edits", () => {
     expect(h.store.messages.search("pwned")).toEqual([]);
 
     // the genuine copy (e.g. from history) fills the placeholder
-    await upsert(original());
+    await h.upsert(original());
     expect(messageRows(h.store, GROUP)[0]).toMatchObject({ type: "text", text: "v1" });
   });
 
@@ -207,8 +205,8 @@ describe("edits", () => {
       id: "3EB0IMG",
       message: content.image({ caption: "before" }),
     });
-    await upsert(image);
-    await upsert(buildMessage({ chat: ANA_PN, message: content.edit(keyOf(image), "after") }));
+    await h.upsert(image);
+    await h.upsert(buildMessage({ chat: ANA_PN, message: content.edit(keyOf(image), "after") }));
     expect(h.store.messages.get({ chatJid: ANA_PN, id: "3EB0IMG" })).toMatchObject({
       type: "image",
       caption: "after",

@@ -29,7 +29,7 @@ wa holds a WhatsApp account's credentials and its message history, and hands par
 
 - The engine runs with umask 077 (and so does the launchd agent): every file it creates is 0600, every directory 0700. Tests check this.
 - The Raycast token is only in `WA_HOME/tokens/raycast.token` (0600); MCP tokens live next to it, one file per profile and project.
-- `wa mcp install` registers Claude Code with a headers helper (`wa mcp headers --token-file …`), so the token stays in its 0600 file instead of Claude Code's config. It also adds a `Read(<WA_HOME>/**)` deny rule to the project's `.claude/settings.local.json`.
+- `wa mcp install` registers Claude Code with a headers helper (`wa mcp headers --token-file …`), so the token stays in its 0600 file instead of Claude Code's config. It also adds a `Read(//<WA_HOME>/**)` deny rule to the project's `.claude/settings.local.json`.
 - Clients upload file bytes to send. The engine never reads a filesystem path supplied by a client.
 - MCP `download_media` never returns paths inside `WA_HOME`; files are exported to `$TMPDIR/wa-export/<profile>/`.
 - `wa service install` excludes `WA_HOME/auth` (the WhatsApp keys) from Time Machine backups. Relinks and logouts keep that directory and move the old keys into `auth/previous/`, so the exclusion covers them too.
@@ -40,12 +40,7 @@ Message text, names, captions and file names are written by other people. MCP ou
 
 ## Honoring intent
 
-- Delete-for-me and chat clears delete the rows, their search entries and cached media.
-- Revokes ("delete for everyone") clear the content and keep a tombstone.
-- Edits and revokes are applied only when they come from the original sender (or a group admin, for revokes).
-- Disappearing messages are purged once they expire.
-- View-once media is never downloaded and its raw payload is not kept.
-- Stories (`status@broadcast`) are not stored.
+wa keeps what the sender meant: deletes, revokes, edits from someone else, disappearing and view-once messages, and stories are handled as described under [Ingest](architecture.md#ingest).
 
 ## Logging and audit
 
@@ -55,4 +50,4 @@ Message text, names, captions and file names are written by other people. MCP ou
 
 ## WhatsApp
 
-wa links as a separate companion device through [Baileys](https://github.com/WhiskeySockets/Baileys), an unofficial client; the account owner can see and remove it under Linked devices on the phone. Using it is against WhatsApp's terms of service and carries a small risk of a ban. Baileys is pinned to an exact release (`7.0.0-rc14`) that has no known advisories.
+wa links as a separate companion device through [Baileys](https://github.com/WhiskeySockets/Baileys), an unofficial client; the account owner can see and remove it under Linked devices on the phone. Using it is against WhatsApp's terms of service and carries a small risk of a ban. Baileys is pinned to an exact release, `7.0.0-rc14` ([why](architecture.md#development)).

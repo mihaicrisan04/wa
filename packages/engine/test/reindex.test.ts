@@ -5,16 +5,18 @@ import { databasePath } from "../src/config";
 import { reindex } from "../src/ingest";
 import { reindexHome } from "../src/maintenance";
 import { openStore } from "../src/store";
-import { buildMessage, content, keyOf, makeTempHome, type TempHome } from "../src/testing";
 import {
   ANA_PN,
+  buildMessage,
+  content,
+  keyOf,
+  makeTempHome,
   ME_LID,
   ME_PN,
-  harness,
-  messageRows,
-  silent,
-  type Harness,
-} from "./support/harness";
+  messageRecord,
+  silentLogger,
+} from "../src/testing";
+import { harness, messageRows, type Harness } from "./support/harness";
 
 let h: Harness;
 
@@ -67,7 +69,7 @@ test("re-derives every row from raw, keeping edits and tombstones", async () => 
   );
   h.store.db.run("INSERT INTO messages_fts (messages_fts) VALUES ('delete-all')");
 
-  expect(reindex(h.store, { pn: ME_PN, lid: ME_LID }, silent)).toEqual({
+  expect(reindex(h.store, { pn: ME_PN, lid: ME_LID }, silentLogger)).toEqual({
     rewritten: 3,
     skipped: 1,
   });
@@ -96,7 +98,7 @@ test("a tombstone stays content-free even if its raw still holds the content", a
   });
   h.store.db.query("UPDATE messages SET raw = $raw WHERE id = '3EB0GONE'").run({ raw: contentRaw });
 
-  reindex(h.store, { pn: ME_PN, lid: ME_LID }, silent);
+  reindex(h.store, { pn: ME_PN, lid: ME_LID }, silentLogger);
 
   const row = h.store.messages.get({ chatJid: ANA_PN, id: "3EB0GONE" })!;
   expect(row).toMatchObject({ type: "revoked", caption: null, has_media: 0 });
@@ -105,44 +107,28 @@ test("a tombstone stays content-free even if its raw still holds the content", a
   expect(h.store.media.get({ chatJid: ANA_PN, id: "3EB0GONE" })).toBeNull();
 });
 
-let temp: TempHome;
-
 test("reindexHome works on the database file and skips a missing one", async () => {
-  temp = await makeTempHome();
+  const temp = await makeTempHome();
   try {
-    expect(await reindexHome(temp.home, silent)).toBeNull();
+    expect(await reindexHome(temp.home, silentLogger)).toBeNull();
     await mkdir(join(temp.home, "auth"), { recursive: true });
     const store = openStore(databasePath(temp.home));
-    store.messages.upsert({
-      chatJid: ANA_PN,
-      id: "3EB0X",
-      fromMe: false,
-      senderJid: ANA_PN,
-      senderAlt: null,
-      ts: 1,
-      type: "junk",
-      text: "junk",
-      caption: null,
-      fileName: null,
-      quotedId: null,
-      quotedChatJid: null,
-      quotedParticipant: null,
-      quotedText: null,
-      editedAt: null,
-      deletedAt: null,
-      expiresAt: null,
-      viewOnce: false,
-      source: "live",
-      raw: JSON.stringify({
-        key: { remoteJid: ANA_PN, id: "3EB0X", fromMe: false },
-        messageTimestamp: "1",
-        message: { conversation: "real text" },
+    store.messages.upsert(
+      messageRecord({
+        id: "3EB0X",
+        ts: 1,
+        type: "junk",
+        text: "junk",
+        raw: JSON.stringify({
+          key: { remoteJid: ANA_PN, id: "3EB0X", fromMe: false },
+          messageTimestamp: "1",
+          message: { conversation: "real text" },
+        }),
       }),
-      media: null,
-    });
+    );
     store.close();
 
-    expect(await reindexHome(temp.home, silent)).toEqual({ rewritten: 1, skipped: 0 });
+    expect(await reindexHome(temp.home, silentLogger)).toEqual({ rewritten: 1, skipped: 0 });
     const reopened = openStore(databasePath(temp.home));
     expect(reopened.messages.get({ chatJid: ANA_PN, id: "3EB0X" })).toMatchObject({
       type: "text",

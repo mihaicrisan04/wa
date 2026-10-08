@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { Readable } from "node:stream";
 import type {
   ChatDetail,
   Message,
@@ -9,9 +8,17 @@ import type {
   SearchHit,
   Status,
 } from "@wa/sdk";
-import { buildMessage, content } from "../src/testing";
-import { startApi, type ApiHarness } from "./support/api";
-import { ANA_PN, BOB_PN, EVE_PN, ME_PN } from "./support/jids";
+import {
+  ANA_PN,
+  BOB_PN,
+  buildMessage,
+  content,
+  EVE_PN,
+  fakeMediaDownload,
+  ME_PN,
+  startApi,
+  type ApiHarness,
+} from "../src/testing";
 import {
   MASTER,
   MASTER_IMAGE_ID,
@@ -31,7 +38,7 @@ const IMAGE_BYTES = Buffer.from("not really a jpeg");
 
 beforeAll(async () => {
   api = await startApi({
-    engine: { mediaDownload: (async () => Readable.from([IMAGE_BYTES])) as never },
+    engine: { mediaDownload: fakeMediaDownload(IMAGE_BYTES) },
   });
   await api.emit(worldEvents());
   await api.emit({
@@ -55,9 +62,8 @@ beforeAll(async () => {
   master = api.token({
     name: "master",
     capabilities: ["chats:read", "messages:read", "media:read"],
-    collections: ["master"],
+    collections: { master: [MASTER] },
   });
-  api.engine.store.collections.addChat("master", MASTER);
 });
 
 afterAll(() => api.stop());

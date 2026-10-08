@@ -1,6 +1,15 @@
 import type { BaileysEventMap, GroupMetadata } from "@whiskeysockets/baileys";
-import { buildMessage, content } from "../../src/testing";
-import { ANA_PN, BOB_PN, EVE_PN, GROUP, ME_PN } from "./jids";
+import { PROFILE_CAPABILITIES } from "@wa/sdk";
+import {
+  ANA_PN,
+  BOB_PN,
+  buildMessage,
+  content,
+  EVE_PN,
+  GROUP,
+  ME_PN,
+  type ApiHarness,
+} from "../../src/testing";
 
 /**
  * A small account: the "master" group (shared with Ana) is what scoped tokens may see; the
@@ -8,6 +17,8 @@ import { ANA_PN, BOB_PN, EVE_PN, GROUP, ME_PN } from "./jids";
  */
 export const MASTER = GROUP;
 export const SECRET = "120363000000000099@g.us";
+/** A second in-scope group, so names like "p" are ambiguous inside the scope. */
+export const LAB = "120363000000000042@g.us";
 export const NOW = Math.floor(Date.now() / 1000);
 
 export const MASTER_TEXT_ID = "3EB0MASTER01";
@@ -109,4 +120,21 @@ export function worldEvents(): Partial<BaileysEventMap> {
       ],
     },
   };
+}
+
+/**
+ * The world plus the "Lab Project" group, with "master" (MASTER, LAB) and "secrets" (SECRET, the
+ * DM with Bob) collections; returns a token with every capability, scoped to "master".
+ */
+export async function scopedWorld(api: ApiHarness): Promise<string> {
+  await api.emit(worldEvents());
+  await api.emit({ "groups.upsert": [group(LAB, "Lab Project", [ME_PN])] });
+  const { collections } = api.engine.store;
+  collections.create("secrets", null);
+  for (const chat of [SECRET, BOB_PN]) collections.addChat("secrets", chat);
+  return api.token({
+    name: "master",
+    capabilities: [...PROFILE_CAPABILITIES],
+    collections: { master: [MASTER, LAB] },
+  });
 }
