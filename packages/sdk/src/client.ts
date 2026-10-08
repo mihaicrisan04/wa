@@ -14,6 +14,7 @@ import {
   type CollectionDetail,
   type CreatedToken,
   type Health,
+  type Items,
   type MediaInfo,
   type MessageContext,
   type MessagePage,
@@ -110,7 +111,7 @@ export interface ProfileInput {
 /** Admin calls work only over the engine's unix socket (the `wa` CLI). */
 export interface WaAdminClient {
   collections: {
-    list(): Promise<Collection[]>;
+    list(): Promise<Items<Collection>>;
     create(input: { name: string; description?: string }): Promise<CollectionDetail>;
     get(name: string): Promise<CollectionDetail>;
     delete(name: string): Promise<void>;
@@ -119,12 +120,12 @@ export interface WaAdminClient {
     removeChat(name: string, chat: string): Promise<CollectionDetail>;
   };
   profiles: {
-    list(): Promise<Profile[]>;
+    list(): Promise<Items<Profile>>;
     create(input: ProfileInput): Promise<Profile>;
     delete(name: string): Promise<void>;
   };
   tokens: {
-    list(profile?: string): Promise<TokenInfo[]>;
+    list(profile?: string): Promise<Items<TokenInfo>>;
     create(input: { profile: string; label?: string }): Promise<CreatedToken>;
     revoke(id: string): Promise<TokenInfo>;
   };
@@ -150,7 +151,7 @@ export interface WaClient {
   search(params: SearchParams): Promise<Page<SearchHit>>;
   media(chat: string, id: string): Promise<MediaInfo>;
   downloadMedia(chat: string, id: string): Promise<MediaDownload>;
-  recipients(params?: { q?: string; limit?: number }): Promise<Recipient[]>;
+  recipients(params?: { q?: string; limit?: number }): Promise<Items<Recipient>>;
   /** `to` is "self", a jid, a phone number or a unique chat name. */
   send(input: { to: string; text: string }): Promise<SendResult>;
   sendFile(input: SendFileInput): Promise<SendResult>;
@@ -199,11 +200,10 @@ export function createWaClient(options: WaClientOptions = {}): WaClient {
   }
 
   const enc = encodeURIComponent;
-  const items = async <T>(promise: Promise<{ items: T[] }>) => (await promise).items;
 
   const admin: WaAdminClient = {
     collections: {
-      list: () => items(call("/v1/admin/collections")),
+      list: () => call("/v1/admin/collections"),
       create: (input) => call("/v1/admin/collections", { method: "POST", json: input }),
       get: (name) => call(`/v1/admin/collections/${enc(name)}`),
       delete: async (name) => {
@@ -215,14 +215,14 @@ export function createWaClient(options: WaClientOptions = {}): WaClient {
         call(`/v1/admin/collections/${enc(name)}/chats/${enc(chat)}`, { method: "DELETE" }),
     },
     profiles: {
-      list: () => items(call("/v1/admin/profiles")),
+      list: () => call("/v1/admin/profiles"),
       create: (input) => call("/v1/admin/profiles", { method: "POST", json: input }),
       delete: async (name) => {
         await call(`/v1/admin/profiles/${enc(name)}`, { method: "DELETE" });
       },
     },
     tokens: {
-      list: (profile) => items(call("/v1/admin/tokens", { query: { profile } })),
+      list: (profile) => call("/v1/admin/tokens", { query: { profile } }),
       create: (input) => call("/v1/admin/tokens", { method: "POST", json: input }),
       revoke: (id) => call(`/v1/admin/tokens/${enc(id)}`, { method: "DELETE" }),
     },
@@ -259,7 +259,7 @@ export function createWaClient(options: WaClientOptions = {}): WaClient {
         size: size ? Number(size) : null,
       };
     },
-    recipients: (params = {}) => items(call("/v1/recipients", { query: { ...params } })),
+    recipients: (params = {}) => call("/v1/recipients", { query: { ...params } }),
     send: (input) => call("/v1/send", { method: "POST", json: input }),
     sendFile: async (input) => {
       if (input.file.size > MAX_UPLOAD_BYTES) {

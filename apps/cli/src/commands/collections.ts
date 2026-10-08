@@ -22,11 +22,11 @@ export const collections = defineGroup({
       usage: "wa collections ls [--json]",
       options: { json: { type: "boolean" } },
       async run({ values }, io) {
-        const list = await engineClient(io.env).admin.collections.list();
-        if (values.json) io.out(json(list));
-        else if (!list.length) io.out("no collections yet (wa collections create <name>)");
+        const listed = await engineClient(io.env).admin.collections.list();
+        if (values.json) io.out(json(listed));
+        else if (!listed.items.length) io.out("no collections yet (wa collections create <name>)");
         else {
-          const rows = list.map((item) => [
+          const rows = listed.items.map((item) => [
             item.name,
             `${item.chatCount} chats`,
             item.description ?? "",

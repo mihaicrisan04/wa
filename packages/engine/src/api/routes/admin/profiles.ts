@@ -1,4 +1,4 @@
-import { PROFILE_CAPABILITIES, type Profile } from "@wa/sdk";
+import { PROFILE_CAPABILITIES, type Items, type Profile } from "@wa/sdk";
 import { Hono } from "hono";
 import { z } from "zod";
 import { BUILTIN_PROFILES } from "../../../tokens";
@@ -18,7 +18,7 @@ const createBody = z.object({
 export function profileRoutes({ store }: ApiDeps) {
   return new Hono<AppEnv>()
     .get("/profiles", (c) =>
-      c.json({ items: store.profiles.list().map(toProfile) satisfies Profile[] }),
+      c.json({ items: store.profiles.list().map(toProfile) } satisfies Items<Profile>),
     )
     .post("/profiles", async (c) => {
       const body = await jsonBody(c, createBody);

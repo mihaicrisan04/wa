@@ -82,7 +82,7 @@ async function rotateMcpToken(
     profile,
     label: `${labelKey} ${dir}`.slice(0, MAX_LABEL),
   });
-  const revoked = (await admin.tokens.list()).filter(
+  const revoked = (await admin.tokens.list()).items.filter(
     (token) =>
       token.id !== created.id &&
       token.revokedAt === null &&

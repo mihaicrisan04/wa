@@ -165,6 +165,11 @@ describe("against a running engine", () => {
 
     const read = await run(["read", "Master PP"], env);
     expect(read.out).toContain("Ana: tema la PP ⏎ new line");
+    expect(JSON.parse((await run(["read", "Master PP", "--json"], env)).out)).toMatchObject({
+      items: [{ chat: GROUP, text: "tema la PP\nnew line" }],
+      older: null,
+      newer: null,
+    });
     const ambiguous = await run(["read", "master"], env);
     expect(ambiguous.code).toBe(1);
     expect(ambiguous.err).toContain("did you mean one of:");
@@ -184,6 +189,9 @@ describe("against a running engine", () => {
     expect(added.out).toContain("master — uni");
     expect(added.out).toContain(ANA_PN);
     expect((await run(["collections", "ls"], env)).out).toMatch(/master\s+2 chats\s+uni/);
+    expect(JSON.parse((await run(["collections", "ls", "--json"], env)).out)).toMatchObject({
+      items: [{ name: "master", chatCount: 2 }],
+    });
     const removed = await run(["collections", "rm", "master", "+40700000002"], env);
     expect(removed.out).not.toContain(ANA_PN);
     expect(

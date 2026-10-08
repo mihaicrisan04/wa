@@ -1,4 +1,4 @@
-import type { Collection, CollectionDetail } from "@wa/sdk";
+import type { Collection, CollectionDetail, Items } from "@wa/sdk";
 import { Hono } from "hono";
 import { z } from "zod";
 import { conflict, notFound } from "../../../errors";
@@ -18,7 +18,7 @@ export function collectionRoutes(deps: ApiDeps) {
   const { store } = deps;
   return new Hono<AppEnv>()
     .get("/collections", (c) =>
-      c.json({ items: store.collections.list().map(toCollection) satisfies Collection[] }),
+      c.json({ items: store.collections.list().map(toCollection) } satisfies Items<Collection>),
     )
     .post("/collections", async (c) => {
       const body = await jsonBody(c, createBody);

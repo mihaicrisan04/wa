@@ -26,7 +26,7 @@ export const read = defineCommand({
       io.out(json(page));
       return 0;
     }
-    for (const message of page.messages) io.out(messageLine(message));
+    for (const message of page.items) io.out(messageLine(message));
     if (page.older) io.out(`(older: wa read ${JSON.stringify(chat)} --before ${page.older})`);
     return 0;
   },
