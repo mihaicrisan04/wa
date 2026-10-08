@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { stat, writeFile } from "node:fs/promises";
-import { raycastTokenPath } from "@wa/sdk";
+import { raycastTokenPath } from "@wa/sdk/paths";
 import { hashToken } from "../src/tokens";
 import { json, startApi, type ApiHarness } from "../src/testing";
 import { MASTER, worldEvents } from "./support/world";

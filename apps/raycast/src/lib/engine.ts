@@ -1,5 +1,6 @@
 import { getPreferenceValues, Toast } from "@raycast/api";
-import { createWaClient, defaultHome, engineUrl, type WaClient } from "@wa/sdk";
+import { createWaClient, engineUrl, type WaClient } from "@wa/sdk";
+import { defaultHome } from "@wa/sdk/paths";
 import { describeError, type ErrorDescription } from "./errors";
 import { parsePort, resolveToken } from "./settings";
 

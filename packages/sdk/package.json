@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./testing": "./src/testing.ts"
+    "./testing": "./src/testing.ts",
+    "./paths": "./src/paths.ts"
   },
   "devDependencies": {
     "@types/node": "22.13.10",

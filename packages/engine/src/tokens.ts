@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { chmod, readFile } from "node:fs/promises";
-import { raycastTokenPath, type ProfileCapability } from "@wa/sdk";
+import type { ProfileCapability } from "@wa/sdk";
+import { raycastTokenPath } from "@wa/sdk/paths";
 import { writeFileAtomic } from "./fs";
 import type { TokenPrincipal } from "./policy";
 import type { ProfileSpec, Store, TokenRow } from "./store";

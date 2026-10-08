@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
-import { DEFAULT_PORT, raycastTokenPath } from "@wa/sdk";
+import { DEFAULT_PORT } from "@wa/sdk";
+import { raycastTokenPath } from "@wa/sdk/paths";
 
 export class MissingTokenError extends Error {
   constructor(readonly path: string) {

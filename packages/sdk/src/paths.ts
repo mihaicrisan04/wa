@@ -1,4 +1,6 @@
-// node:os/node:path only: the Raycast extension bundles this and runs it on Node, not Bun.
+/// <reference types="node" />
+// A subpath so the main entry stays platform-neutral; node:os/node:path only, since the
+// Raycast extension bundles this and runs it on Node, not Bun.
 import { homedir } from "node:os";
 import { join } from "node:path";
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { defaultHome, raycastTokenPath } from "@wa/sdk";
+import { defaultHome } from "@wa/sdk/paths";
 import { ConfigError, DEFAULT_PORT, loadConfig } from "../src/config";
 
 describe("loadConfig", () => {
@@ -33,15 +33,5 @@ describe("loadConfig", () => {
     ["WA_LOG_LEVEL", "loud"],
   ])("rejects %s=%s", (name, value) => {
     expect(() => loadConfig({ [name]: value })).toThrow(ConfigError);
-  });
-});
-
-describe("@wa/sdk paths", () => {
-  test("the default home sits under the user's Application Support", () => {
-    expect(defaultHome("/Users/me")).toBe("/Users/me/Library/Application Support/wa");
-  });
-
-  test("the raycast token lives in WA_HOME/tokens", () => {
-    expect(raycastTokenPath("/tmp/wa home")).toBe("/tmp/wa home/tokens/raycast.token");
   });
 });

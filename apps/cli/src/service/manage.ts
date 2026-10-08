@@ -2,7 +2,7 @@ import { chmod, copyFile, mkdir, realpath, rename, rm, writeFile } from "node:fs
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { ENGINE_VERSION, loadConfig, type EngineConfig } from "@wa/engine";
-import { defaultHome } from "@wa/sdk";
+import { defaultHome } from "@wa/sdk/paths";
 import { EXIT_FAILURE, FailureError, type CommandIO } from "../command";
 import { firstLine, spawnExec, waCommand, type Exec } from "../exec";
 import { table } from "../output";

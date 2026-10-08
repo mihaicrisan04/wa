@@ -1,6 +1,7 @@
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_PORT, defaultHome } from "@wa/sdk";
+import { DEFAULT_PORT } from "@wa/sdk";
+import { defaultHome } from "@wa/sdk/paths";
 import { z } from "zod";
 import packageJson from "../package.json";
 
