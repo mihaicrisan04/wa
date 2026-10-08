@@ -58,6 +58,36 @@ function beyond(side: "<" | ">", [ts, rowid]: Position, name: string): SqlFragme
 
 const positionOf = (row: MessageRecordRow): Position => [row.ts, row.rowid];
 
+/** Up to `limit` rows, and whether `where` holds more past them, from one `limit + 1` query. */
+function selectWithMore(
+  ctx: ReadContext,
+  where: SqlFragment,
+  order: Order,
+  limit: number,
+): { rows: MessageRecordRow[]; more: boolean } {
+  const rows = selectMessages(ctx, where, order, limit + 1);
+  return { rows: rows.slice(0, limit), more: rows.length > limit };
+}
+
+/** Rows oldest first, and whether the chat has more past them on either side. */
+interface Slice {
+  rows: MessageRecordRow[];
+  older: boolean;
+  newer: boolean;
+}
+
+/** Whether the chat has a visible message past `row` on `side`. */
+function hasMore(
+  ctx: ReadContext,
+  chat: SqlFragment,
+  side: "<" | ">",
+  row: MessageRecordRow | undefined,
+): boolean {
+  if (!row) return false;
+  const edge = beyond(side, positionOf(row), "edge");
+  return selectMessages(ctx, and(chat, edge), "ASC", 1).length > 0;
+}
+
 /** One page of a visible chat, oldest first, with cursors to walk further either way. */
 export function listMessages(
   ctx: ReadContext,
@@ -65,41 +95,36 @@ export function listMessages(
   options: MessageListOptions,
 ): MessagePage {
   const chat = inChat(chatJid);
-  const rows = options.around
+  const { rows, older, newer } = options.around
     ? pageAround(ctx, chat, options.around, options.limit)
     : pageBetween(ctx, chat, options);
 
-  const cursorBeyond = (side: "<" | ">", row: MessageRecordRow | undefined): string | null => {
-    if (!row) return null;
-    const edge = beyond(side, positionOf(row), "edge");
-    const more = selectMessages(ctx, and(chat, edge), "ASC", 1).length > 0;
-    return more ? encodeCursor(positionOf(row)) : null;
-  };
+  const cursorAt = (row: MessageRecordRow | undefined, more: boolean): string | null =>
+    more && row ? encodeCursor(positionOf(row)) : null;
   return {
     items: rows.map(toMessage),
-    older: cursorBeyond("<", rows.at(0)),
-    newer: cursorBeyond(">", rows.at(-1)),
+    older: cursorAt(rows.at(0), older),
+    newer: cursorAt(rows.at(-1), newer),
   };
 }
 
 /** The anchor message with about half the page on each side of it. */
-function pageAround(
-  ctx: ReadContext,
-  chat: SqlFragment,
-  id: string,
-  limit: number,
-): MessageRecordRow[] {
+function pageAround(ctx: ReadContext, chat: SqlFragment, id: string, limit: number): Slice {
   const anchor = findMessage(ctx, chat, id);
   const position = positionOf(anchor);
   const olderCount = Math.floor((limit - 1) / 2);
-  const older = selectMessages(ctx, and(chat, beyond("<", position, "a")), "DESC", olderCount);
-  const newer = selectMessages(
+  const older = selectWithMore(ctx, and(chat, beyond("<", position, "a")), "DESC", olderCount);
+  const newer = selectWithMore(
     ctx,
     and(chat, beyond(">", position, "a")),
     "ASC",
     limit - 1 - olderCount,
   );
-  return [...older.reverse(), anchor, ...newer];
+  return {
+    rows: [...older.rows.reverse(), anchor, ...newer.rows],
+    older: older.more,
+    newer: newer.more,
+  };
 }
 
 /** The first page after `after`, or else the last page before `before` (or the latest). */
@@ -107,14 +132,27 @@ function pageBetween(
   ctx: ReadContext,
   chat: SqlFragment,
   { before, after, limit }: MessageListOptions,
-): MessageRecordRow[] {
+): Slice {
   const bounds = [chat];
   if (before) bounds.push(beyond("<", parseBound(before, "before"), "before"));
   if (after) {
     bounds.push(beyond(">", parseBound(after, "after"), "after"));
-    return selectMessages(ctx, and(...bounds), "ASC", limit);
+    const { rows, more } = selectWithMore(ctx, and(...bounds), "ASC", limit);
+    return {
+      rows,
+      older: hasMore(ctx, chat, "<", rows.at(0)),
+      // a `before` bound can end the page with newer messages still past it
+      newer: more || (Boolean(before) && hasMore(ctx, chat, ">", rows.at(-1))),
+    };
   }
-  return selectMessages(ctx, and(...bounds), "DESC", limit).reverse();
+  const { rows, more } = selectWithMore(ctx, and(...bounds), "DESC", limit);
+  rows.reverse();
+  return {
+    rows,
+    older: more,
+    // nothing is newer than the latest page
+    newer: Boolean(before) && hasMore(ctx, chat, ">", rows.at(-1)),
+  };
 }
 
 /** A visible message with up to `context` messages on each side. */
