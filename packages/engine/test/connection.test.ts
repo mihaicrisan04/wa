@@ -1,8 +1,7 @@
-import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { DisconnectReason } from "@whiskeysockets/baileys";
-import pino from "pino";
 import {
   eventually,
   FakeWhatsAppClient,
@@ -10,6 +9,7 @@ import {
   ME,
   ME_LID,
   ME_PN,
+  silentLogger,
   type TempHome,
 } from "../src/testing";
 import type { Logger } from "../src/logger";
@@ -18,6 +18,7 @@ import {
   PREVIOUS_AUTH_DIR,
   WhatsAppConnection,
   type ConnectionOptions,
+  type Schedule,
 } from "../src/whatsapp/connection";
 
 type CreateClient = ConnectionOptions["createClient"];
@@ -25,8 +26,21 @@ type CreateClient = ConnectionOptions["createClient"];
 let temp: TempHome;
 let clients: FakeWhatsAppClient[];
 let connection: WhatsAppConnection;
-/** Every reconnect delay the connection scheduled; empty means nothing can reconnect later. */
-let reconnectDelays: number[];
+/** Every reconnect the connection scheduled; empty means nothing can reconnect later. */
+let reconnects: Array<{ delay: number; cancelled: boolean }>;
+
+/** Real timers, recording each reconnect and whether it was cancelled. */
+const recordingSchedule: Schedule = (run, delay) => {
+  const reconnect = { delay, cancelled: false };
+  reconnects.push(reconnect);
+  const timer = setTimeout(run, delay);
+  return () => {
+    reconnect.cancelled = true;
+    clearTimeout(timer);
+  };
+};
+
+const reconnectDelays = () => reconnects.map((reconnect) => reconnect.delay);
 
 function newFakeClient(): FakeWhatsAppClient {
   const client = new FakeWhatsAppClient();
@@ -36,13 +50,14 @@ function newFakeClient(): FakeWhatsAppClient {
 
 function newConnection(
   createClient: CreateClient = newFakeClient,
-  logger: Logger = reconnectLogger(reconnectDelays),
+  logger: Logger = silentLogger,
 ): WhatsAppConnection {
   return new WhatsAppConnection({
     home: temp.home,
     logger,
     createClient,
     backoff: { baseMs: 5, maxMs: 20 },
+    schedule: recordingSchedule,
   });
 }
 
@@ -78,28 +93,14 @@ async function linkAndOpen(): Promise<void> {
   await settle();
 }
 
-/** A logger that records the delay of every scheduled reconnect. */
-function reconnectLogger(delays: number[]): Logger {
-  return pino(
-    { level: "info" },
-    {
-      write(line: string) {
-        const entry = JSON.parse(line) as { msg: string; delay?: number };
-        if (entry.msg === "reconnecting to WhatsApp") delays.push(entry.delay!);
-      },
-    },
-  );
-}
-
 beforeEach(async () => {
   temp = await makeTempHome();
   clients = [];
-  reconnectDelays = [];
+  reconnects = [];
   connection = newConnection();
 });
 
 afterEach(async () => {
-  jest.useRealTimers();
   await connection.stop();
   await temp.cleanup();
 });
@@ -155,7 +156,7 @@ describe("linking", () => {
     await settle();
     expect(connection.status().state).toBe("not_linked");
     expect(clients).toHaveLength(1);
-    expect(reconnectDelays).toEqual([]);
+    expect(reconnects).toEqual([]);
   });
 
   test("refuses to link again unless relinking", async () => {
@@ -214,7 +215,7 @@ describe("disconnects", () => {
     expect((await stat(authDir())).ino).toBe(before.ino);
     expect(await Bun.file(join(authDir(), "creds.json")).exists()).toBe(false);
     expect(clients).toHaveLength(2);
-    expect(reconnectDelays).toEqual([]);
+    expect(reconnects).toEqual([]);
   });
 
   test("440 connection replaced never reconnects", async () => {
@@ -222,7 +223,7 @@ describe("disconnects", () => {
     await settle();
     expect(connection.status()).toMatchObject({ state: "replaced", lastDisconnect: { code: 440 } });
     expect(clients).toHaveLength(2);
-    expect(reconnectDelays).toEqual([]);
+    expect(reconnects).toEqual([]);
   });
 
   test("the last disconnect is stamped in unix seconds, like every other timestamp", async () => {
@@ -256,21 +257,18 @@ describe("disconnects", () => {
   });
 
   test("reconnect delays double up to the cap and start over once connected", async () => {
-    for (const reconnects of [1, 2, 3, 4]) {
+    for (const count of [1, 2, 3, 4]) {
       latest().close(DisconnectReason.connectionLost);
       await settle();
-      await eventually(
-        () => reconnectDelays.length === reconnects,
-        "the reconnect to be scheduled",
-      );
+      await eventually(() => reconnects.length === count, "the reconnect to be scheduled");
       await eventually(() => connection.status().state === "connecting", "the reconnect");
     }
     latest().open();
     await settle();
     latest().close(DisconnectReason.connectionLost);
     await settle();
-    await eventually(() => reconnectDelays.length === 5, "the reconnect after opening");
-    expect(reconnectDelays).toEqual([5, 10, 20, 20, 5]);
+    await eventually(() => reconnects.length === 5, "the reconnect after opening");
+    expect(reconnectDelays()).toEqual([5, 10, 20, 20, 5]);
   });
 
   test("events from a retired socket are ignored", async () => {
@@ -283,13 +281,12 @@ describe("disconnects", () => {
   });
 
   test("stop ends the socket and cancels reconnects", async () => {
-    jest.useFakeTimers();
     latest().close(DisconnectReason.connectionLost);
     await settle();
-    expect(jest.getTimerCount()).toBe(1); // the pending reconnect
+    expect(reconnects).toEqual([{ delay: 5, cancelled: false }]);
 
     await connection.stop();
-    expect(jest.getTimerCount()).toBe(0);
+    expect(reconnects).toEqual([{ delay: 5, cancelled: true }]);
     expect(connection.status().state).toBe("stopped");
     expect(clients).toHaveLength(2);
   });
@@ -320,7 +317,7 @@ describe("socket creation failures", () => {
     await linking;
 
     expect(connection.status().state).toBe("stopped");
-    expect(reconnectDelays).toEqual([]);
+    expect(reconnects).toEqual([]);
     expect(attempts).toHaveLength(1);
     expect(clients).toHaveLength(0);
   });
