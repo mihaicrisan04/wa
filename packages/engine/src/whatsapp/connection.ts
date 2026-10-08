@@ -8,23 +8,13 @@ import {
   type AuthenticationState,
   type BaileysEventMap,
 } from "@whiskeysockets/baileys";
+import type { ConnectionState } from "@wa/sdk";
+import { backoffDelay, DEFAULT_BACKOFF, type Backoff } from "../backoff";
+import { nowSeconds } from "../clock";
+import { authDir } from "../config";
 import type { Logger } from "../logger";
-import { nowSeconds } from "../store";
-import type { ClientEvents, ClientFactory, WhatsAppClient } from "./client";
-
-export type ConnectionState =
-  /** No credentials yet; idle until `link()`. */
-  | "not_linked"
-  /** Socket open for pairing, QR codes are being issued. */
-  | "linking"
-  | "connecting"
-  | "open"
-  | "reconnecting"
-  /** Logged out from the phone; credentials were moved aside. */
-  | "needs_link"
-  /** Another session took over; never reconnects on its own. */
-  | "replaced"
-  | "stopped";
+import { boomStatus } from "./boom";
+import type { ClientEvents, WhatsAppClient } from "./client";
 
 export interface OwnIdentity {
   pn: string;
@@ -42,13 +32,13 @@ export interface ConnectionStatus {
 export interface ConnectionOptions {
   home: string;
   logger: Logger;
-  createClient: ClientFactory;
-  backoff?: { baseMs: number; maxMs: number };
+  /** A socket for the persisted auth state, on every (re)connect. */
+  createClient: (auth: AuthenticationState) => WhatsAppClient | Promise<WhatsAppClient>;
+  backoff?: Backoff;
 }
 
 type ClientListener = (client: WhatsAppClient) => void | Promise<void>;
 
-const DEFAULT_BACKOFF = { baseMs: 1_000, maxMs: 60_000 };
 /** Inside `auth/`, holding the credentials of earlier links. */
 export const PREVIOUS_AUTH_DIR = "previous";
 const CREDS_FILE = "creds.json";
@@ -71,7 +61,7 @@ export class WhatsAppConnection {
   private lastDisconnect: ConnectionStatus["lastDisconnect"] = null;
   private readonly clientListeners = new Set<ClientListener>();
   private readonly openListeners = new Set<ClientListener>();
-  private readonly backoff: { baseMs: number; maxMs: number };
+  private readonly backoff: Backoff;
 
   constructor(private readonly options: ConnectionOptions) {
     this.backoff = options.backoff ?? DEFAULT_BACKOFF;
@@ -82,7 +72,7 @@ export class WhatsAppConnection {
   }
 
   private get authDir(): string {
-    return join(this.options.home, "auth");
+    return authDir(this.options.home);
   }
 
   async start(): Promise<void> {
@@ -187,7 +177,7 @@ export class WhatsAppConnection {
       if (update?.qr) this.qr = update.qr;
       if (update?.connection === "open") await this.handleOpen(client);
       if (update?.connection === "close")
-        await this.handleClose(disconnectCode(update.lastDisconnect?.error));
+        await this.handleClose(boomStatus(update.lastDisconnect?.error));
     } catch (err) {
       this.logger.error({ err }, "connection event handling failed");
     }
@@ -235,10 +225,7 @@ export class WhatsAppConnection {
 
   private scheduleReconnect(state: "linking" | "connecting" = "connecting"): void {
     this.reconnectAttempt++;
-    const delay = Math.min(
-      this.backoff.baseMs * 2 ** (this.reconnectAttempt - 1),
-      this.backoff.maxMs,
-    );
+    const delay = backoffDelay(this.backoff, this.reconnectAttempt);
     this.state = "reconnecting";
     this.logger.info({ delay, attempt: this.reconnectAttempt }, "reconnecting to WhatsApp");
     this.reconnectTimer = setTimeout(() => {
@@ -284,9 +271,9 @@ export class WhatsAppConnection {
 
 /** Own identity from the credentials on disk, without connecting; null when never linked. */
 export async function readOwnIdentity(home: string): Promise<OwnIdentity | null> {
-  const authDir = join(home, "auth");
-  if (!(await stat(authDir).catch(() => null))?.isDirectory()) return null;
-  const { state } = await useMultiFileAuthState(authDir);
+  const dir = authDir(home);
+  if (!(await stat(dir).catch(() => null))?.isDirectory()) return null;
+  const { state } = await useMultiFileAuthState(dir);
   return ownIdentityOf(state.creds);
 }
 
@@ -304,9 +291,4 @@ async function endClient(client: WhatsAppClient): Promise<void> {
 function removeAllListeners(ev: ClientEvents): void {
   // Baileys types require an event name, but the emitter clears everything without one
   (ev.removeAllListeners as () => void)();
-}
-
-function disconnectCode(error: unknown): number | null {
-  const code = (error as { output?: { statusCode?: unknown } } | undefined)?.output?.statusCode;
-  return typeof code === "number" ? code : null;
 }

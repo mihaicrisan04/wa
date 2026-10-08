@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { PROFILE_CAPABILITIES } from "@wa/sdk";
-import { authenticate } from "../src/access";
+import { authenticate } from "../src/tokens";
 import { chatName, type ReadContext } from "../src/queries";
 import { startApi, type ApiHarness } from "./support/api";
 import { BOB_PN, EVE_PN, ME_PN } from "./support/jids";

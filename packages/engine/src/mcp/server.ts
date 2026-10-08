@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { createMcpHandler, McpServer, type AuthInfo } from "@modelcontextprotocol/server";
 import type { Handler } from "hono";
 import type { ApiDeps, AppEnv } from "../api/context";
-import { Identity } from "../ingest";
+import { Identity } from "../whatsapp/identity";
 import { can, type TokenPrincipal } from "../policy";
 import { FENCE_CLOSE, FENCE_OPEN } from "./format";
 import { describeScope, visibleScope } from "./scope";

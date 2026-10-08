@@ -25,7 +25,7 @@ beforeEach(async () => {
   temp = await makeTempHome();
   env = { WA_HOME: temp.home };
   engine = await startEngine(temp.config, {
-    client: () => (client = new FakeWhatsAppClient(client?.user as never)),
+    client: () => (client = new FakeWhatsAppClient(client?.user)),
     logger: createLogger("silent"),
     backfillTimeoutMs: 100,
   });

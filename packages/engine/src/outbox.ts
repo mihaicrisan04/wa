@@ -1,23 +1,20 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { generateMessageIDV2 } from "@whiskeysockets/baileys";
+import { generateMessageIDV2, type AnyMessageContent } from "@whiskeysockets/baileys";
+import { backoffDelay, DEFAULT_BACKOFF, type Backoff } from "./backoff";
+import { nowSeconds } from "./clock";
+import { outboxDir } from "./config";
+import { removeFiles, writeFileAtomic } from "./fs";
 import type { Logger } from "./logger";
-import { nowSeconds, type OutboxPayload, type OutboxRow, type Store } from "./store";
+import type { OutboxRow, Store } from "./store";
 import type { WhatsAppClient } from "./whatsapp/client";
 import type { OwnIdentity } from "./whatsapp/connection";
-import { removeCachedFiles } from "./whatsapp/media";
-import { buildOutgoingContent, type OutgoingPayload } from "./whatsapp/outgoing";
-
-export type OutgoingMessage =
-  | { kind: "text"; text: string }
-  | {
-      kind: "file";
-      bytes: Uint8Array;
-      fileName: string;
-      mimetype: string | null;
-      caption: string | null;
-    };
+import {
+  buildOutgoingContent,
+  type OutgoingContent,
+  type OutgoingMessage,
+} from "./whatsapp/outgoing";
 
 export interface OutboxOptions {
   store: Store;
@@ -27,16 +24,13 @@ export interface OutboxOptions {
   /** The socket when the connection is open, null otherwise. */
   client: () => WhatsAppClient | null;
   me: () => OwnIdentity | null;
-  backoff?: { baseMs: number; maxMs: number };
-  /** How long an entry may wait before it expires instead of going out late. */
-  ttlSeconds?: number;
-  /** Failed sends before an entry is given up on, so one bad entry can't hold up the queue. */
-  maxAttempts?: number;
+  backoff?: Backoff;
 }
 
-const DEFAULT_BACKOFF = { baseMs: 1_000, maxMs: 60_000 };
-const DEFAULT_TTL_SECONDS = 60 * 60;
-const DEFAULT_MAX_ATTEMPTS = 8;
+/** How long an entry may wait before it expires instead of going out late. */
+const TTL_SECONDS = 60 * 60;
+/** Failed sends before an entry is given up on, so one bad entry can't hold up the queue. */
+const MAX_ATTEMPTS = 8;
 
 /**
  * The persisted send queue. Each entry gets its WhatsApp message id when queued and reuses it on
@@ -51,7 +45,7 @@ export class Outbox {
   private stopped = false;
 
   constructor(private readonly options: OutboxOptions) {
-    this.dir = join(options.home, "outbox");
+    this.dir = outboxDir(options.home);
     options.store.outbox.requeueInterrupted();
   }
 
@@ -61,29 +55,15 @@ export class Outbox {
     profile: string | null,
   ): Promise<OutboxRow> {
     const id = `o_${randomBytes(8).toString("hex")}`;
-    let filePath: string | null = null;
-    let payload: OutboxPayload;
-    if (message.kind === "file") {
-      await mkdir(this.dir, { recursive: true, mode: 0o700 });
-      filePath = join(this.dir, id);
-      await writeFile(filePath, message.bytes, { mode: 0o600 });
-      payload = {
-        kind: "file",
-        caption: message.caption,
-        fileName: message.fileName,
-        mimetype: message.mimetype,
-        profile,
-      };
-    } else {
-      payload = { kind: "text", text: message.text, profile };
-    }
+    const filePath = message.kind === "file" ? await this.keepFile(id, message.bytes) : null;
     const row = this.options.store.outbox.insert({
       id,
       messageId: generateMessageIDV2(this.options.me()?.pn),
       chatJid,
-      payload,
+      profile,
+      payload: contentOf(message),
       filePath,
-      expiresAt: nowSeconds() + (this.options.ttlSeconds ?? DEFAULT_TTL_SECONDS),
+      expiresAt: nowSeconds() + TTL_SECONDS,
     });
     this.flush();
     return row;
@@ -114,7 +94,7 @@ export class Outbox {
   }
 
   async expire(): Promise<void> {
-    await removeCachedFiles(this.options.store.outbox.expire(), this.options.logger);
+    await removeFiles(this.options.store.outbox.expire(), this.options.logger);
   }
 
   async stop(): Promise<void> {
@@ -144,15 +124,8 @@ export class Outbox {
   /** False when the send failed and the entry stays queued for a retry. */
   private async attempt(client: WhatsAppClient, row: OutboxRow): Promise<boolean> {
     const { store, logger } = this.options;
-    let content;
-    try {
-      content = await buildOutgoingContent(await this.payloadOf(row));
-    } catch (err) {
-      logger.warn({ err, outboxId: row.id }, "could not prepare a queued message");
-      store.outbox.finish(row.id, "failed", "the message could not be prepared");
-      await this.removeFile(row);
-      return true;
-    }
+    const content = await this.prepare(row);
+    if (!content) return true;
 
     store.outbox.markSending(row.id);
     try {
@@ -160,7 +133,7 @@ export class Outbox {
       store.outbox.finish(row.id, "sent");
     } catch (err) {
       const attempts = row.attempts + 1;
-      if (attempts < (this.options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS)) {
+      if (attempts < MAX_ATTEMPTS) {
         logger.warn({ err, outboxId: row.id, attempts }, "sending failed, will retry");
         store.outbox.finish(row.id, "queued", "sending failed, retrying");
         return false;
@@ -173,21 +146,27 @@ export class Outbox {
     return true;
   }
 
-  private async payloadOf(row: OutboxRow): Promise<OutgoingPayload> {
-    const payload = JSON.parse(row.payload) as OutboxPayload;
-    if (payload.kind === "text") return { text: payload.text };
-    if (!row.file_path) throw new Error("queued file is missing");
-    const bytes = await readFile(row.file_path);
-    return {
-      file: { bytes, name: payload.fileName, mimetype: payload.mimetype ?? undefined },
-      caption: payload.caption ?? undefined,
-    };
+  /** Null when the entry can't be sent at all: it is marked failed and its file removed. */
+  private async prepare(row: OutboxRow): Promise<AnyMessageContent | null> {
+    try {
+      return await buildOutgoingContent(await messageOf(row));
+    } catch (err) {
+      this.options.logger.warn({ err, outboxId: row.id }, "could not prepare a queued message");
+      this.options.store.outbox.finish(row.id, "failed", "the message could not be prepared");
+      await this.removeFile(row);
+      return null;
+    }
+  }
+
+  private async keepFile(id: string, bytes: Uint8Array): Promise<string> {
+    const path = join(this.dir, id);
+    await writeFileAtomic(path, bytes);
+    return path;
   }
 
   private scheduleRetry(): void {
     this.failures++;
-    const backoff = this.options.backoff ?? DEFAULT_BACKOFF;
-    const delay = Math.min(backoff.baseMs * 2 ** (this.failures - 1), backoff.maxMs);
+    const delay = backoffDelay(this.options.backoff ?? DEFAULT_BACKOFF, this.failures);
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
       this.flush();
@@ -200,6 +179,18 @@ export class Outbox {
   }
 
   private async removeFile(row: OutboxRow): Promise<void> {
-    if (row.file_path) await removeCachedFiles([row.file_path], this.options.logger);
+    if (row.file_path) await removeFiles([row.file_path], this.options.logger);
   }
+}
+
+function contentOf(message: OutgoingMessage): OutgoingContent {
+  if (message.kind === "text") return message;
+  const { bytes: _bytes, ...file } = message;
+  return file;
+}
+
+async function messageOf({ payload, file_path }: OutboxRow): Promise<OutgoingMessage> {
+  if (payload.kind === "text") return payload;
+  if (!file_path) throw new Error("queued file is missing");
+  return { ...payload, bytes: await readFile(file_path) };
 }

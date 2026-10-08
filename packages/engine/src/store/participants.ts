@@ -1,8 +1,8 @@
+import type { ParticipantRole } from "@wa/sdk";
 import type { Database } from "./db";
 
-export type ParticipantRole = "member" | "admin" | "superadmin" | "left";
-
-export interface Participant {
+/** A group member as stored: a canonical jid and its role. */
+export interface Member {
   jid: string;
   role: ParticipantRole;
 }
@@ -13,9 +13,9 @@ const NEXT_SEQ = "(SELECT coalesce(max(role_seq), 0) + 1 FROM group_participants
 export class ParticipantsRepo {
   constructor(private readonly db: Database) {}
 
-  list(groupJid: string): Participant[] {
+  list(groupJid: string): Member[] {
     return this.db
-      .query<Participant, { groupJid: string }>(
+      .query<Member, { groupJid: string }>(
         "SELECT jid, role FROM group_participants WHERE group_jid = $groupJid ORDER BY jid",
       )
       .all({ groupJid });
@@ -32,17 +32,17 @@ export class ParticipantsRepo {
   }
 
   /** A full member list: everyone not in it who was a member is now `left`. */
-  replace(groupJid: string, participants: Participant[]): void {
+  replace(groupJid: string, members: Member[]): void {
     this.db
       .query(
         `UPDATE group_participants SET role = 'left', role_seq = ${NEXT_SEQ}
          WHERE group_jid = $groupJid`,
       )
       .run({ groupJid });
-    for (const participant of participants) this.set(groupJid, participant);
+    for (const member of members) this.set(groupJid, member);
   }
 
-  set(groupJid: string, { jid, role }: Participant): void {
+  set(groupJid: string, { jid, role }: Member): void {
     this.db
       .query(
         `INSERT INTO group_participants (group_jid, jid, role, role_seq)

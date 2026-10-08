@@ -20,8 +20,10 @@ import { isolated, type IngestContext } from "./context";
 /** Edits and revokes a batch announced through carrier messages. */
 export interface Carriers {
   actions: MessageAction[];
-  /** Revokes by their carrier, keyed like `refKey`. */
+  /** Revokes by their carrier's id, keyed like `refKey`. */
   revokes: Map<string, MessageAction>;
+  /** Edits by their target's id, keyed like `refKey`. */
+  edits: Map<string, MessageAction>;
 }
 
 export function normalizeMessages(
@@ -47,14 +49,17 @@ export function carriersOf(...lists: Normalized[][]): Carriers {
   const actions = lists.flatMap((items) =>
     items.flatMap((item) => (item.kind === "carrier" && item.action ? [item.action] : [])),
   );
-  const revokes = new Map(
-    actions.flatMap((action) =>
-      action.type === "revoke" && action.carrierId
-        ? [[refKey(action.chatJid, action.carrierId), action] as const]
-        : [],
-    ),
-  );
-  return { actions, revokes };
+  const revokes = new Map<string, MessageAction>();
+  const edits = new Map<string, MessageAction>();
+  for (const action of actions) {
+    if (action.type === "revoke" && action.carrierId) {
+      revokes.set(refKey(action.chatJid, action.carrierId), action);
+    } else if (action.type === "edit") {
+      const key = refKey(action.chatJid, action.targetId);
+      if (!edits.has(key)) edits.set(key, action);
+    }
+  }
+  return { actions, revokes, edits };
 }
 
 /** Stores the storable messages; carriers are never stored as rows. */
@@ -86,19 +91,14 @@ export function ingestMessageUpdates(ctx: IngestContext, updates: WAMessageUpdat
 export function deleteMessages(ctx: IngestContext, data: BaileysEventMap["messages.delete"]): void {
   const { store, identity } = ctx;
   if ("all" in data) {
-    const jid = identity.chat(data.jid);
-    ctx.orphanedFiles.push(...store.media.removeChat(jid));
-    store.messages.deleteChat(jid);
+    ctx.orphan(...store.clearChat(identity.chat(data.jid)));
     return;
   }
   for (const key of data.keys) {
     if (!key.remoteJid || !key.id) continue;
     const id = key.id;
     isolated(ctx, { id }, () => {
-      const ref = { chatJid: chatOf(key, identity), id };
-      const file = store.media.remove(ref);
-      if (file) ctx.orphanedFiles.push(file);
-      store.messages.delete(ref);
+      ctx.orphan(store.deleteMessage({ chatJid: chatOf(key, identity), id }));
     });
   }
 }
@@ -143,10 +143,7 @@ function checkFoldedEdit(
   record: MessageRecord,
   carriers: Carriers,
 ): MessageRecord {
-  const carrier = carriers.actions.find(
-    (action) =>
-      action.type === "edit" && action.chatJid === record.chatJid && action.targetId === record.id,
-  );
+  const carrier = carriers.edits.get(refKey(record.chatJid, record.id));
   if (!carrier || isAuthorized(ctx, carrier, record)) return record;
   ctx.logger.warn(
     { chat: record.chatJid, id: record.id },
@@ -163,10 +160,7 @@ function writeMessage(ctx: IngestContext, incoming: MessageRecord, pushName: str
 
   const ref = { chatJid: record.chatJid, id: record.id };
   if (record.media && record.deletedAt === null) store.media.upsert(ref, record.media);
-  else {
-    const file = store.media.remove(ref);
-    if (file) ctx.orphanedFiles.push(file);
-  }
+  else ctx.orphan(store.media.remove(ref));
   store.chats.touch(record.chatJid, record.ts);
 
   const sender = record.senderJid;

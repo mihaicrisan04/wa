@@ -1,4 +1,6 @@
+import { SNIPPET_CLOSE, SNIPPET_OPEN } from "@wa/sdk";
 import type { Database } from "./db";
+import { toFtsQuery, type SearchOptions, type SearchRow } from "./search";
 
 export const PLACEHOLDER_TYPE = "placeholder";
 export const REVOKED_TYPE = "revoked";
@@ -151,22 +153,24 @@ export class MessagesRepo {
     return this.db.query(UPSERT_SQL).get(recordParams(record)) !== null;
   }
 
-  get(chatJid: string, id: string): MessageRow | null {
+  get(key: MessageKeyRef): MessageRow | null {
     return this.db
       .query<MessageRow, MessageKeyRef>(
         "SELECT * FROM messages WHERE chat_jid = $chatJid AND id = $id",
       )
-      .get({ chatJid, id });
+      .get(key);
   }
 
   /** Rewrites everything derived from `raw` (reindex), keeping event-derived edit/delete times. */
   rewrite(rowid: number, record: MessageRecord): void {
-    const params: Record<string, unknown> = recordParams(record);
+    const params: Record<string, string | number | null> = recordParams(record);
     const assignments = REWRITABLE.map((column) => `${column} = $${column}`).join(", ");
-    const values = Object.fromEntries(REWRITABLE.map((column) => [column, params[column]]));
+    const values = Object.fromEntries(REWRITABLE.map((column) => [column, params[column] ?? null]));
     this.db
-      .query(`UPDATE messages SET ${assignments} WHERE rowid = $rowid`)
-      .run({ ...values, rowid } as never);
+      .query<unknown, Record<string, string | number | null>>(
+        `UPDATE messages SET ${assignments} WHERE rowid = $rowid`,
+      )
+      .run({ ...values, rowid });
   }
 
   applyEdit(
@@ -208,15 +212,39 @@ export class MessagesRepo {
       .run({ ...key, raw });
   }
 
-  delete(key: MessageKeyRef): boolean {
-    return (
-      this.db.query("DELETE FROM messages WHERE chat_jid = $chatJid AND id = $id").run(key)
-        .changes > 0
-    );
+  delete(key: MessageKeyRef): void {
+    this.db.query("DELETE FROM messages WHERE chat_jid = $chatJid AND id = $id").run(key);
   }
 
-  deleteChat(chatJid: string): number {
-    return this.db.query("DELETE FROM messages WHERE chat_jid = $chatJid").run({ chatJid }).changes;
+  deleteChat(chatJid: string): void {
+    this.db.query("DELETE FROM messages WHERE chat_jid = $chatJid").run({ chatJid });
+  }
+
+  /** Full-text search over text, captions and file names, best matches first. */
+  search(input: string, options: SearchOptions = {}): SearchRow[] {
+    const query = toFtsQuery(input);
+    if (!query) return [];
+    const where = options.where ? `AND (${options.where.sql})` : "";
+    return this.db
+      .query<SearchRow, Record<string, string | number | null>>(
+        `SELECT m.rowid, m.chat_jid, m.id, m.ts, f.rank,
+           snippet(messages_fts, -1, '${SNIPPET_OPEN}', '${SNIPPET_CLOSE}', '…', 12) AS snippet
+         FROM messages_fts AS f JOIN messages AS m ON m.rowid = f.rowid
+         WHERE messages_fts MATCH $query AND m.deleted_at IS NULL ${where}
+         ORDER BY f.rank, m.ts DESC, m.rowid DESC
+         LIMIT $limit OFFSET $offset`,
+      )
+      .all({
+        ...options.where?.params,
+        query,
+        limit: options.limit ?? 50,
+        offset: options.offset ?? 0,
+      });
+  }
+
+  /** Makes the search index match the rows again. */
+  rebuildSearchIndex(): void {
+    this.db.run("INSERT INTO messages_fts (messages_fts) VALUES ('rebuild')");
   }
 
   expired(now: number): MessageKeyRef[] {
@@ -256,12 +284,9 @@ export class MessagesRepo {
       .all({ afterRowid, limit });
   }
 
-  /**
-   * Moves a chat's messages to another jid. When both hold the same message id, the copy that
-   * knows more wins: a tombstone over content, content over a placeholder, then the later edit;
-   * on a tie the target's copy is kept.
-   */
+  /** Moves a chat's messages to `to`; on a clash the copy that knows more wins, else the target's. */
   moveChat(from: string, to: string): void {
+    // a tombstone over content over a placeholder, then the later edit
     const rank = (row: string) =>
       `(CASE WHEN ${row}.deleted_at IS NOT NULL THEN 2 WHEN ${row}.type = '${PLACEHOLDER_TYPE}' THEN 0 ELSE 1 END,
         coalesce(${row}.edited_at, 0))`;

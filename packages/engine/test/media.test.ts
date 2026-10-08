@@ -124,7 +124,7 @@ describe("downloads", () => {
       ]);
       expect(h.client.mediaReuploads.map((m) => m.key.id)).toEqual(["3EB0DOC"]);
 
-      const raw = parseRaw(h.store.messages.get(ANA_PN, "3EB0DOC")!.raw!);
+      const raw = parseRaw(h.store.messages.get({ chatJid: ANA_PN, id: "3EB0DOC" })!.raw!);
       expect(raw.message?.documentMessage?.directPath).toBe("/v/t62.fixture-refreshed");
       expect(h.store.media.get({ chatJid: ANA_PN, id: "3EB0DOC" })).toMatchObject({
         local_path: cached.path,
@@ -195,7 +195,7 @@ describe("a message revoked while its download is in flight", () => {
 
     expect(((await download) as MediaUnavailableError).reason).toBe("not_found");
     expect(await readdir(racing.dir)).toEqual([]);
-    const row = h.store.messages.get(ANA_PN, "3EB0RACE")!;
+    const row = h.store.messages.get({ chatJid: ANA_PN, id: "3EB0RACE" })!;
     expect(row.type).toBe("revoked");
     expect(row.raw).not.toContain("imageMessage");
   });
@@ -217,7 +217,9 @@ describe("disappearing media", () => {
       message: { imageMessage: { ...imageMessage, contextInfo: { expiration: 3600 } } },
     });
     await h.emit({ "messages.upsert": { messages: [image], type: "notify" } });
-    expect(h.store.messages.get(ANA_PN, key.id)?.expires_at).toBeGreaterThan(Date.now() / 1000);
+    expect(h.store.messages.get({ chatJid: ANA_PN, id: key.id })?.expires_at).toBeGreaterThan(
+      Date.now() / 1000,
+    );
     return new MediaCache({
       store: h.store,
       home: temp.home,

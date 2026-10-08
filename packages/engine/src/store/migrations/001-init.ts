@@ -158,6 +158,7 @@ CREATE TABLE outbox (
   id TEXT PRIMARY KEY,
   message_id TEXT NOT NULL,
   chat_jid TEXT NOT NULL,
+  profile TEXT,
   payload TEXT NOT NULL,
   file_path TEXT,
   status TEXT NOT NULL CHECK (status IN ('queued', 'sending', 'sent', 'failed', 'expired')),

@@ -1,5 +1,5 @@
 import type { Chat, ChatKind, Message } from "@wa/sdk";
-import type { Identity } from "../ingest";
+import type { Identity } from "../whatsapp/identity";
 import { scopeSql, type Principal, type SqlFragment } from "../policy";
 import type { Store } from "../store";
 

@@ -1,17 +1,18 @@
 import { Database } from "bun:sqlite";
+import { nowSeconds } from "../clock";
 import { MIGRATIONS, type Migration } from "./migrations";
 
 export type { Database };
 
 /** Opens (creating if needed) the store and brings its schema up to date. */
-export function openDatabase(path: string, migrations: Migration[] = MIGRATIONS): Database {
+export function openDatabase(path: string): Database {
   const db = new Database(path, { create: true, strict: true });
   db.run("PRAGMA journal_mode = WAL");
   db.run("PRAGMA synchronous = NORMAL");
   db.run("PRAGMA foreign_keys = ON");
   // the CLI may open the same file while the engine runs
   db.run("PRAGMA busy_timeout = 5000");
-  migrate(db, migrations);
+  migrate(db, MIGRATIONS);
   return db;
 }
 
@@ -35,8 +36,4 @@ export function migrate(db: Database, migrations: Migration[]): void {
       });
     })();
   }
-}
-
-export function nowSeconds(): number {
-  return Math.floor(Date.now() / 1000);
 }

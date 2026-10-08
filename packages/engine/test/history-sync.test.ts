@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Status } from "@wa/sdk";
 import { proto } from "@whiskeysockets/baileys";
-import { HISTORY_PHASES_KEY, type HistoryPhase, type HistoryPhases } from "../src/ingest";
 import { HISTORY_STALL_SECONDS, readHistorySync } from "../src/queries";
-import { openStore, type Store } from "../src/store";
+import { openStore, type HistoryPhaseState, type HistoryPhases, type Store } from "../src/store";
 import { historySet } from "../src/testing";
 import { json, startApi } from "./support/api";
 import { connectMcp } from "./support/mcp";
@@ -21,12 +20,12 @@ beforeEach(() => {
 });
 afterEach(() => store.close());
 
-function phase(patch: Partial<HistoryPhase>): HistoryPhase {
-  return { progress: null, status: null, explicit: null, chunks: 1, at: FRESH, ...patch };
+function phase(patch: Partial<HistoryPhaseState>): HistoryPhaseState {
+  return { progress: null, status: null, explicit: null, chunks: 1, updatedAt: FRESH, ...patch };
 }
 
 function summary(phases: HistoryPhases) {
-  store.sync.set(HISTORY_PHASES_KEY, phases);
+  store.sync.setHistoryPhases(phases);
   return readHistorySync(store, NOW);
 }
 
@@ -44,11 +43,13 @@ describe("overall history sync", () => {
     const bootstrap = phase({ status: "complete", explicit: true, chunks: 0 });
     expect(summary({ initial_bootstrap: bootstrap }).status).toBeNull();
     // nothing after it for a while: WhatsApp stopped sending
-    expect(summary({ initial_bootstrap: { ...bootstrap, at: STALE } }).status).toBe("paused");
+    expect(summary({ initial_bootstrap: { ...bootstrap, updatedAt: STALE } }).status).toBe(
+      "paused",
+    );
   });
 
   test("recent decides while no full sync was seen, but never finishes the sync", () => {
-    const bootstrap = phase({ status: "complete", at: FRESH - 10 });
+    const bootstrap = phase({ status: "complete", updatedAt: FRESH - 10 });
     expect(
       summary({ initial_bootstrap: bootstrap, recent: phase({ progress: 40 }) }),
     ).toMatchObject({ progress: 40, status: null });
@@ -59,7 +60,7 @@ describe("overall history sync", () => {
       status: null,
     });
     // no full sync after it for a while: WhatsApp stopped sending
-    expect(summary({ recent: { ...recent, at: STALE } })).toMatchObject({
+    expect(summary({ recent: { ...recent, updatedAt: STALE } })).toMatchObject({
       progress: 100,
       status: "paused",
     });
@@ -70,12 +71,12 @@ describe("overall history sync", () => {
   });
 
   test("the full sync is done at 100%, paused when its chunks stop coming", () => {
-    const recent = phase({ progress: 100, status: "complete", at: FRESH - 30 });
+    const recent = phase({ progress: 100, status: "complete", updatedAt: FRESH - 30 });
     expect(summary({ recent, full: phase({ progress: 45 }) })).toMatchObject({
       progress: 45,
       status: null,
     });
-    expect(summary({ recent, full: phase({ progress: 45, at: STALE }) })).toMatchObject({
+    expect(summary({ recent, full: phase({ progress: 45, updatedAt: STALE }) })).toMatchObject({
       progress: 45,
       status: "paused",
     });
@@ -91,9 +92,9 @@ describe("overall history sync", () => {
 
   test("phases are listed oldest first, with when they last moved", () => {
     const result = summary({
-      full: phase({ progress: 10, chunks: 3, at: FRESH }),
-      push_name: phase({ at: FRESH - 20 }),
-      recent: phase({ progress: 100, status: "complete", at: FRESH - 10 }),
+      full: phase({ progress: 10, chunks: 3, updatedAt: FRESH }),
+      push_name: phase({ updatedAt: FRESH - 20 }),
+      recent: phase({ progress: 100, status: "complete", updatedAt: FRESH - 10 }),
     });
     expect(result.updatedAt).toBe(FRESH);
     expect(result.phases).toEqual([

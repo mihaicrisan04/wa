@@ -158,7 +158,7 @@ describe("a mapping learned later", () => {
   test("re-points senders, participants and contacts to the PN", async () => {
     await h.emit({ "lid-mapping.update": { lid: BOB_LID, pn: BOB_PN } });
 
-    expect(h.store.messages.get(GROUP, "3EB0GRP")).toMatchObject({
+    expect(h.store.messages.get({ chatJid: GROUP, id: "3EB0GRP" })).toMatchObject({
       sender_jid: BOB_PN,
       sender_alt: BOB_LID,
     });
@@ -206,7 +206,7 @@ describe("merging copies of the same message", () => {
       expect.objectContaining({ id: "3EB0X", type: "revoked", caption: null }),
     ]);
     expect(h.store.media.get({ chatJid: ANA_PN, id: "3EB0X" })).toBeNull();
-    expect(h.store.search("secret")).toEqual([]);
+    expect(h.store.messages.search("secret")).toEqual([]);
   });
 
   test("an edited copy under the LID wins over an older one under the PN", async () => {
@@ -294,7 +294,10 @@ describe("a person's role across their jids", () => {
         },
       ],
     });
-    expect(h.store.messages.get(GROUP, "3EB0ANA")).toMatchObject({ type: "text", text: "mine" });
+    expect(h.store.messages.get({ chatJid: GROUP, id: "3EB0ANA" })).toMatchObject({
+      type: "text",
+      text: "mine",
+    });
   });
 
   test("a removal seen under the LID outlives the admin role under the PN", async () => {

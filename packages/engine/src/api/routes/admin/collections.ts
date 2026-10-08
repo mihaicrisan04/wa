@@ -2,7 +2,7 @@ import type { ChatCandidate, Collection, CollectionDetail } from "@wa/sdk";
 import { Hono } from "hono";
 import { z } from "zod";
 import { ApiError, notFound } from "../../../errors";
-import { ADMIN, actorOf } from "../../../policy";
+import { ADMIN, auditActor } from "../../../policy";
 import { resolveChat, type ReadContext } from "../../../queries";
 import type { CollectionRow } from "../../../store";
 import { readContext, type ApiDeps, type AppEnv } from "../../context";
@@ -17,7 +17,7 @@ const chatsBody = z.object({ chats: z.array(requiredText).min(1).max(500) });
 export function collectionRoutes(deps: ApiDeps) {
   const { store } = deps;
   const audit = (action: string, detail: Record<string, unknown>) =>
-    store.audit.record({ ...actorOf(ADMIN), action, detail });
+    store.audit.record({ ...auditActor(ADMIN), action, detail });
 
   return new Hono<AppEnv>()
     .get("/collections", (c) =>

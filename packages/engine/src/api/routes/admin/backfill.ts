@@ -2,7 +2,7 @@ import { BACKFILL_DEFAULT_MAX, type BackfillJob } from "@wa/sdk";
 import { Hono } from "hono";
 import { z } from "zod";
 import { ApiError, notFound, notLinked } from "../../../errors";
-import { ADMIN, actorOf } from "../../../policy";
+import { ADMIN, auditActor } from "../../../policy";
 import { chatName, resolveChat } from "../../../queries";
 import { readContext, type ApiDeps, type AppEnv } from "../../context";
 import { jsonBody, requiredText } from "../../params";
@@ -28,7 +28,7 @@ export function backfillRoutes(deps: ApiDeps) {
       }
       const job = backfills.start(chat, chatName(ctx, chat), body.max);
       store.audit.record({
-        ...actorOf(ADMIN),
+        ...auditActor(ADMIN),
         action: "backfill",
         chatJid: chat,
         detail: { max: body.max },

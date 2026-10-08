@@ -36,8 +36,7 @@ export function deleteChats(ctx: IngestContext, ids: string[]): void {
   const { store } = ctx;
   for (const id of ids) {
     const jid = ctx.identity.chat(id);
-    ctx.orphanedFiles.push(...store.media.removeChat(jid));
-    store.messages.deleteChat(jid);
+    ctx.orphan(...store.clearChat(jid));
     store.participants.deleteGroup(jid);
     store.chats.delete(jid);
   }
@@ -82,18 +81,18 @@ function chatPatch(chat: ChatFields): ChatPatch {
  * buffering), a read as 0 and marked-unread as -1; history and upserts carry the full count.
  */
 function unreadPatch(chat: ChatFields, isUpdate: boolean): ChatPatch {
-  if (chat.markedAsUnread) return { unreadCount: -1 };
+  if (chat.markedAsUnread) return { unread: { set: -1 } };
   if (typeof chat.unreadCount !== "number") return {};
-  if (isUpdate && chat.unreadCount > 0) return { unreadDelta: chat.unreadCount };
-  return { unreadCount: chat.unreadCount };
+  if (isUpdate && chat.unreadCount > 0) return { unread: { add: chat.unreadCount } };
+  return { unread: { set: chat.unreadCount } };
 }
 
 function nonZero(value: Parameters<typeof toNumber>[0]): number | null {
-  const number = value == null ? 0 : toNumber(value);
+  const number = toNumber(value);
   return number !== 0 ? number : null;
 }
 
 function positive(value: Parameters<typeof toNumber>[0]): number | null {
-  const number = value == null ? 0 : toNumber(value);
+  const number = toNumber(value);
   return number > 0 ? number : null;
 }

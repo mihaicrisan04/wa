@@ -142,7 +142,7 @@ describe("wa backfill", () => {
     expect(second.id).toBe(first.id);
     const audit = api.engine.store.audit.list({ limit: 10 });
     expect(audit.filter((entry) => entry.action === "backfill")).toHaveLength(2);
-    expect(audit[0]).toMatchObject({ chat_jid: ANA_PN, detail: JSON.stringify({ max: 10 }) });
+    expect(audit[0]).toMatchObject({ chat: ANA_PN, detail: { max: 10 } });
   });
 
   test("stopping the engine ends a waiting backfill", async () => {

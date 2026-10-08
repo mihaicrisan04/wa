@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { initAuthCreds } from "@whiskeysockets/baileys";
 import { startEngine, type Engine } from "../src/engine";
 import {
@@ -22,7 +22,7 @@ beforeEach(async () => {
   temp = await makeTempHome();
   engine = await startEngine(temp.config, {
     client: (_auth, given) => {
-      hooks = given ?? {};
+      hooks = given;
       client = new FakeWhatsAppClient();
       return client;
     },
@@ -48,7 +48,7 @@ describe("engine wiring", () => {
       type: "notify",
     });
     await client.idle();
-    expect(engine.store.messages.get(ANA_PN, "3EB0LIVE")?.text).toBe("live");
+    expect(engine.store.messages.get({ chatJid: ANA_PN, id: "3EB0LIVE" })?.text).toBe("live");
   });
 
   test("own messages use the identity from the credentials", async () => {
@@ -87,9 +87,19 @@ describe("engine wiring", () => {
     });
     await client.idle();
     const deadline = Date.now() + 1_000;
-    while (engine.store.messages.get(ANA_PN, "3EB0POOF") && Date.now() < deadline)
+    while (engine.store.messages.get({ chatJid: ANA_PN, id: "3EB0POOF" }) && Date.now() < deadline)
       await Bun.sleep(5);
-    expect(engine.store.messages.get(ANA_PN, "3EB0POOF")).toBeNull();
+    expect(engine.store.messages.get({ chatJid: ANA_PN, id: "3EB0POOF" })).toBeNull();
+  });
+
+  test("a purge that fails does not stop the next ones", async () => {
+    const purge = spyOn(engine.store, "purgeExpired").mockImplementationOnce(() => {
+      throw new Error("disk I/O error");
+    });
+    const deadline = Date.now() + 1_000;
+    while (purge.mock.calls.length < 3 && Date.now() < deadline) await Bun.sleep(5);
+    expect(purge.mock.calls.length).toBeGreaterThanOrEqual(3);
+    purge.mockRestore();
   });
 });
 

@@ -1,7 +1,7 @@
 import type { Message, MessageContext, MessagePage } from "@wa/sdk";
 import { notFound } from "../errors";
 import { and, scopeSql, type SqlFragment, type SqlParams } from "../policy";
-import { nowSeconds } from "../store";
+import { nowSeconds } from "../clock";
 import { encodeCursor, parseBound, type Position } from "./cursor";
 import { resolveChat } from "./resolve";
 import { messageSelect, toMessage, type MessageRecordRow, type ReadContext } from "./rows";

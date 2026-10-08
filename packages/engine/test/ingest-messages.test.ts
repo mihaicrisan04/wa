@@ -71,7 +71,7 @@ describe("messages.upsert", () => {
     expect(messageRows(h.store, ANA_PN)).toEqual([
       expect.objectContaining({ type: "text", text: "decrypted" }),
     ]);
-    expect(h.store.search("decrypted")).toHaveLength(1);
+    expect(h.store.messages.search("decrypted")).toHaveLength(1);
   });
 
   test("carriers and status broadcasts never become rows", async () => {
@@ -93,7 +93,7 @@ describe("messages.upsert", () => {
     await upsert(
       buildMessage({ chat: ANA_PN, id: "3EB0ONCE", message: content.viewOnce(content.image()) }),
     );
-    expect(h.store.messages.get(ANA_PN, "3EB0ONCE")).toMatchObject({
+    expect(h.store.messages.get({ chatJid: ANA_PN, id: "3EB0ONCE" })).toMatchObject({
       view_once: 1,
       raw: null,
       has_media: 1,
@@ -136,7 +136,7 @@ describe("deletes", () => {
     await h.emit({ "messages.delete": { keys: [keyOf(message)] } });
 
     expect(messageRows(h.store, ANA_PN).map((row) => row.id)).toEqual(["3EB0KEEP"]);
-    expect(h.store.search("notite")).toEqual([]);
+    expect(h.store.messages.search("notite")).toEqual([]);
     expect(h.store.media.get({ chatJid: ANA_PN, id: "3EB0DEL" })).toBeNull();
   });
 
@@ -165,7 +165,7 @@ describe("deletes", () => {
     expect(h.store.chats.get(GROUP)).toBeNull();
     expect(messageRows(h.store, GROUP)).toEqual([]);
     expect(h.store.participants.list(GROUP)).toEqual([]);
-    expect(h.store.search("bye")).toEqual([]);
+    expect(h.store.messages.search("bye")).toEqual([]);
   });
 });
 
@@ -218,7 +218,7 @@ describe("robustness", () => {
       buildMessage({ chat: ANA_PN, id: "3EB0OK", message: content.text("whole") }),
     );
     expect(messageRows(h.store, ANA_PN).map((row) => row.id)).toEqual(["3EB0OK"]);
-    expect(h.store.search("half")).toEqual([]);
+    expect(h.store.messages.search("half")).toEqual([]);
   });
 
   test("an unresolvable broadcast key in a delete or update is skipped alone", async () => {

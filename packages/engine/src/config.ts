@@ -61,6 +61,29 @@ export function socketPath(home: string): string {
   return join(home, "engine.sock");
 }
 
+/** Baileys' multi-file auth state: the linked device's credentials and keys. */
+export function authDir(home: string): string {
+  return join(home, "auth");
+}
+
+/** Downloaded media, named by a hash of chat and message id. */
+export function mediaDir(home: string): string {
+  return join(home, "media");
+}
+
+/** Uploaded files waiting to be sent, named by outbox id. */
+export function outboxDir(home: string): string {
+  return join(home, "outbox");
+}
+
+export function tokensDir(home: string): string {
+  return join(home, "tokens");
+}
+
+export function raycastTokenPath(home: string): string {
+  return join(tokensDir(home), "raycast.token");
+}
+
 /** Every file the engine creates is 0600 and every directory 0700. */
 export function restrictFileModes(): void {
   process.umask(0o077);

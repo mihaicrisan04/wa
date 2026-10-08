@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import type { Backfills } from "../backfill";
-import { Identity } from "../ingest";
+import { Identity } from "../whatsapp/identity";
 import type { Logger } from "../logger";
 import type { Outbox } from "../outbox";
 import type { Principal } from "../policy";

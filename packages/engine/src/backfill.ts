@@ -2,7 +2,8 @@ import { randomBytes } from "node:crypto";
 import type { BackfillJob, BackfillStopReason } from "@wa/sdk";
 import type { HistoryPage, Ingest } from "./ingest";
 import type { Logger } from "./logger";
-import { nowSeconds, type OldestMessage, type Store } from "./store";
+import { nowSeconds } from "./clock";
+import type { OldestMessage, Store } from "./store";
 import type { WhatsAppClient } from "./whatsapp/client";
 
 /** The most messages WhatsApp hands out per on-demand request. */
@@ -60,7 +61,7 @@ export class Backfills {
       finishedAt: null,
     };
     const abort = new AbortController();
-    const done = this.page(job, abort.signal)
+    const done = this.pageBack(job, abort.signal)
       .catch((err: unknown): BackfillStopReason => {
         this.options.logger.error({ err, chat }, "backfill failed");
         return "failed";
@@ -87,7 +88,8 @@ export class Backfills {
     await Promise.all([...this.runs.values()].map((run) => run.done));
   }
 
-  private async page(job: BackfillJob, signal: AbortSignal): Promise<BackfillStopReason> {
+  /** Requests older pages until the phone runs out, stops answering or `max` is reached. */
+  private async pageBack(job: BackfillJob, signal: AbortSignal): Promise<BackfillStopReason> {
     const { store } = this.options;
     let remoteJids = this.remoteJidsOf(job.chat);
     while (job.fetched < job.max) {
@@ -134,8 +136,10 @@ export class Backfills {
       const requestId = await client.fetchMessageHistory(count, key, anchor.ts * 1000);
       const page = await pages.next(
         (candidate) => candidate.sessionId === requestId || candidate.chats.has(job.chat),
-        this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-        signal,
+        AbortSignal.any([
+          signal,
+          AbortSignal.timeout(this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+        ]),
       );
       if (page) return "answered";
       return signal.aborted ? "stopped" : "timeout";
@@ -163,44 +167,39 @@ export class Backfills {
 /** Collects stored on-demand pages from the moment it is created. */
 class PageWatch {
   private readonly pages: HistoryPage[] = [];
-  private wake: (() => void) | null = null;
+  private arrived: (() => void) | null = null;
   private readonly unsubscribe: () => void;
 
   constructor(ingest: Ingest) {
     this.unsubscribe = ingest.onHistoryPage((page) => {
       this.pages.push(page);
-      this.wake?.();
+      this.arrived?.();
     });
   }
 
-  /** The first page that matches, or null once the time is up or the signal aborts. */
+  /** The first page that matches, or null once `signal` aborts. */
   async next(
     matches: (page: HistoryPage) => boolean,
-    timeoutMs: number,
     signal: AbortSignal,
   ): Promise<HistoryPage | null> {
-    const deadline = Date.now() + timeoutMs;
     for (;;) {
       const page = this.pages.find(matches);
       if (page) return page;
-      const left = deadline - Date.now();
-      if (left <= 0 || signal.aborted) return null;
+      if (signal.aborted) return null;
       await new Promise<void>((resolve) => {
-        const done = () => {
-          clearTimeout(timer);
-          signal.removeEventListener("abort", done);
-          this.wake = null;
+        const wake = () => {
+          signal.removeEventListener("abort", wake);
+          this.arrived = null;
           resolve();
         };
-        const timer = setTimeout(done, left);
-        signal.addEventListener("abort", done);
-        this.wake = done;
+        signal.addEventListener("abort", wake);
+        this.arrived = wake;
       });
     }
   }
 
   close(): void {
     this.unsubscribe();
-    this.wake?.();
+    this.arrived?.();
   }
 }

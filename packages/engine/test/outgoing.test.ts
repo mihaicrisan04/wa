@@ -1,21 +1,27 @@
 import { describe, expect, test } from "bun:test";
 import { Jimp, JimpMime } from "jimp";
-import { buildOutgoingContent, classifyFile, mimetypeFor } from "../src/whatsapp/outgoing";
+import {
+  buildOutgoingContent,
+  classifyFile,
+  mimetypeFor,
+  type OutgoingMessage,
+} from "../src/whatsapp/outgoing";
 
 async function png(width: number, height: number): Promise<Buffer> {
   return new Jimp({ width, height, color: 0xff8800ff }).getBuffer(JimpMime.png);
 }
 
+function file(bytes: Uint8Array, fileName: string, caption: string | null = null): OutgoingMessage {
+  return { kind: "file", bytes, fileName, mimetype: null, caption };
+}
+
 describe("buildOutgoingContent", () => {
   test("text stays text", async () => {
-    expect(await buildOutgoingContent({ text: "hi" })).toEqual({ text: "hi" });
+    expect(await buildOutgoingContent({ kind: "text", text: "hi" })).toEqual({ text: "hi" });
   });
 
   test("images become JPEG with thumbnail and dimensions", async () => {
-    const result = await buildOutgoingContent({
-      file: { bytes: await png(320, 200), name: "shot.png" },
-      caption: "look",
-    });
+    const result = await buildOutgoingContent(file(await png(320, 200), "shot.png", "look"));
     if (!("image" in result)) throw new Error("expected an image message");
     expect(result).toMatchObject({
       mimetype: "image/jpeg",
@@ -32,28 +38,22 @@ describe("buildOutgoingContent", () => {
   });
 
   test("oversized images are scaled down to 4096px", async () => {
-    const result = await buildOutgoingContent({
-      file: { bytes: await png(8192, 16), name: "wide.PNG" },
-    });
+    const result = await buildOutgoingContent(file(await png(8192, 16), "wide.PNG"));
     expect(result).toMatchObject({ width: 4096, height: 8 });
   });
 
   test("videos, audio and documents keep their bytes", async () => {
     const bytes = new Uint8Array([1, 2, 3]);
-    expect(
-      await buildOutgoingContent({ file: { bytes, name: "clip.mov" }, caption: "c" }),
-    ).toMatchObject({
+    expect(await buildOutgoingContent(file(bytes, "clip.mov", "c"))).toMatchObject({
       video: Buffer.from(bytes),
       mimetype: "video/quicktime",
       caption: "c",
     });
-    expect(await buildOutgoingContent({ file: { bytes, name: "voice.opus" } })).toMatchObject({
+    expect(await buildOutgoingContent(file(bytes, "voice.opus"))).toMatchObject({
       audio: Buffer.from(bytes),
       mimetype: "audio/opus",
     });
-    expect(
-      await buildOutgoingContent({ file: { bytes, name: "tema 2.pdf" }, caption: "c" }),
-    ).toMatchObject({
+    expect(await buildOutgoingContent(file(bytes, "tema 2.pdf", "c"))).toMatchObject({
       document: Buffer.from(bytes),
       mimetype: "application/pdf",
       fileName: "tema 2.pdf",
@@ -75,11 +75,9 @@ describe("file classification", () => {
   });
 
   test("an uploaded mimetype wins over the extension, unknown falls back", () => {
-    expect(
-      mimetypeFor({ bytes: new Uint8Array(), name: "a.bin", mimetype: "text/csv" }, "x/y"),
-    ).toBe("text/csv");
-    expect(
-      mimetypeFor({ bytes: new Uint8Array(), name: "a.bin" }, "application/octet-stream"),
-    ).toBe("application/octet-stream");
+    expect(mimetypeFor({ fileName: "a.bin", mimetype: "text/csv" }, "x/y")).toBe("text/csv");
+    expect(mimetypeFor({ fileName: "a.bin", mimetype: null }, "application/octet-stream")).toBe(
+      "application/octet-stream",
+    );
   });
 });

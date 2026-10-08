@@ -9,7 +9,7 @@ import type {
   Profile,
   TokenInfo,
 } from "@wa/sdk";
-import { raycastTokenPath } from "../src/access";
+import { raycastTokenPath } from "../src/config";
 import { EngineRunningError } from "../src/api/socket";
 import { startEngine } from "../src/engine";
 import { FakeWhatsAppClient, makeTempHome } from "../src/testing";

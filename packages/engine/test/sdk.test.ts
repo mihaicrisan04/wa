@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { createWaClient, MAX_UPLOAD_BYTES, WaApiError, type WaClient } from "@wa/sdk";
-import { raycastTokenPath } from "../src/access";
+import { raycastTokenPath } from "../src/config";
 import { startApi, type ApiHarness } from "./support/api";
 import { ME_PN } from "./support/jids";
 import { MASTER, MASTER_IMAGE_ID, MASTER_TEXT_ID, worldEvents } from "./support/world";

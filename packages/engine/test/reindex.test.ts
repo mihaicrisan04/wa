@@ -76,8 +76,8 @@ test("re-derives every row from raw, keeping edits and tombstones", async () => 
   expect(after).toEqual(before);
   expect(after.find((row) => row.id === "3EB0EDIT")).toMatchObject({ text: "v2", edited_at: 200 });
   expect(after.find((row) => row.id === "3EB0GONE")).toMatchObject({ type: "revoked", text: null });
-  expect(h.store.search("cautare").map((hit) => hit.id)).toEqual(["3EB0PLAIN"]);
-  expect(h.store.search("junk")).toEqual([]);
+  expect(h.store.messages.search("cautare").map((hit) => hit.id)).toEqual(["3EB0PLAIN"]);
+  expect(h.store.messages.search("junk")).toEqual([]);
 });
 
 test("a tombstone stays content-free even if its raw still holds the content", async () => {
@@ -87,7 +87,7 @@ test("a tombstone stays content-free even if its raw still holds the content", a
     message: content.image({ caption: "private caption" }),
   });
   await h.emit({ "messages.upsert": { messages: [message], type: "notify" } });
-  const contentRaw = h.store.messages.get(ANA_PN, "3EB0GONE")!.raw;
+  const contentRaw = h.store.messages.get({ chatJid: ANA_PN, id: "3EB0GONE" })!.raw;
   await h.emit({
     "messages.upsert": {
       messages: [buildMessage({ chat: ANA_PN, message: content.revoke(keyOf(message)) })],
@@ -98,7 +98,7 @@ test("a tombstone stays content-free even if its raw still holds the content", a
 
   reindex(h.store, { pn: ME_PN, lid: ME_LID }, silent);
 
-  const row = h.store.messages.get(ANA_PN, "3EB0GONE")!;
+  const row = h.store.messages.get({ chatJid: ANA_PN, id: "3EB0GONE" })!;
   expect(row).toMatchObject({ type: "revoked", caption: null, has_media: 0 });
   expect(row.deleted_at).toBeGreaterThan(0);
   expect(row.raw).not.toContain("private caption");
@@ -144,7 +144,7 @@ test("reindexHome works on the database file and skips a missing one", async () 
 
     expect(await reindexHome(temp.home, silent)).toEqual({ rewritten: 1, skipped: 0 });
     const reopened = openStore(databasePath(temp.home));
-    expect(reopened.messages.get(ANA_PN, "3EB0X")).toMatchObject({
+    expect(reopened.messages.get({ chatJid: ANA_PN, id: "3EB0X" })).toMatchObject({
       type: "text",
       text: "real text",
     });

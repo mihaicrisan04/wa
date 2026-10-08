@@ -11,8 +11,17 @@ import {
   type WAMessageKey,
   type WAMessageUpdate,
 } from "@whiskeysockets/baileys";
-import { nowSeconds, PLACEHOLDER_TYPE, REVOKED_TYPE, type MessageRecord } from "../store";
-import { CARRIER_TYPES, contentTypeOf, contextInfoOf, mediaOf, textOf, typeName } from "./content";
+import { nowSeconds } from "../clock";
+import { PLACEHOLDER_TYPE, REVOKED_TYPE, type MessageRecord } from "../store";
+import {
+  bodyOf,
+  CARRIER_TYPES,
+  contentTypeOf,
+  contextInfoOf,
+  mediaOf,
+  textOf,
+  typeName,
+} from "./content";
 import { serializeRaw } from "./raw";
 
 const { StubType } = proto.WebMessageInfo;
@@ -56,8 +65,15 @@ export type Normalized =
       foldedEdit: boolean;
     };
 
+/** A key that names its chat and message. */
+type CompleteKey = WAMessageKey & { remoteJid: string; id: string };
+
+function isComplete(key: WAMessageKey | null | undefined): key is CompleteKey {
+  return Boolean(key?.remoteJid && key.id);
+}
+
 export function chatOf(key: WAMessageKey, resolve: JidResolver): string {
-  return resolve.chat(jidNormalizedUser(getChatId(key)));
+  return resolve.chat(getChatId(key));
 }
 
 function actorOf(key: WAMessageKey, resolve: JidResolver): Actor {
@@ -73,7 +89,7 @@ export function normalizeMessage(
   source: MessageRecord["source"],
 ): Normalized {
   const key = message.key;
-  if (!key?.remoteJid || !key.id) return { kind: "skip", reason: "invalid" };
+  if (!isComplete(key)) return { kind: "skip", reason: "invalid" };
   if (isJidStatusBroadcast(key.remoteJid)) return { kind: "skip", reason: "status" };
 
   const ts = toNumber(message.messageTimestamp);
@@ -81,13 +97,13 @@ export function normalizeMessage(
   const type = contentTypeOf(content);
   const stub = message.messageStubType;
 
-  if (type && CARRIER_TYPES.has(type)) {
-    return { kind: "carrier", action: carrierAction(message, content!, resolve, ts) };
+  if (content && type && CARRIER_TYPES.has(type)) {
+    return { kind: "carrier", action: carrierAction(key, content, resolve, ts) };
   }
   if (message.message && !type) return { kind: "carrier", action: null };
 
   const base = baseRecord(key, resolve, ts, source);
-  if (!type) {
+  if (!content || !type) {
     if (stub === StubType.REVOKE) {
       return asMessage(message, {
         ...base,
@@ -102,7 +118,7 @@ export function normalizeMessage(
     return { kind: "skip", reason: "system" };
   }
 
-  const viewOnce = isViewOnce(message);
+  const viewOnce = isViewOnce(message, bodyOf(content, type));
   const context = contextInfoOf(content);
   const foldedEdit = Boolean(message.message?.editedMessage);
   const record: MessageRecord = {
@@ -171,7 +187,7 @@ function asMessage(message: WAMessage, record: MessageRecord): Normalized {
 
 /** A placeholder row: key, sender and time, no content yet. */
 function baseRecord(
-  key: WAMessageKey,
+  key: CompleteKey,
   resolve: JidResolver,
   ts: number,
   source: MessageRecord["source"],
@@ -179,7 +195,7 @@ function baseRecord(
   const sender = actorOf(key, resolve);
   return {
     chatJid: chatOf(key, resolve),
-    id: key.id!,
+    id: key.id,
     fromMe: sender.fromMe,
     senderJid: sender.jid,
     senderAlt: sender.fromMe ? null : senderAlt(key, sender.jid),
@@ -203,8 +219,8 @@ function baseRecord(
 }
 
 /** The other address WhatsApp gave for the sender (LID when the canonical one is the PN). */
-function senderAlt(key: WAMessageKey, senderJid: string | null): string | null {
-  const candidates = isJidGroup(key.remoteJid!)
+function senderAlt(key: CompleteKey, senderJid: string | null): string | null {
+  const candidates = isJidGroup(key.remoteJid)
     ? [key.participant, key.participantAlt]
     : [key.remoteJid, key.remoteJidAlt];
   const alt = candidates
@@ -215,7 +231,7 @@ function senderAlt(key: WAMessageKey, senderJid: string | null): string | null {
 }
 
 function carrierAction(
-  message: WAMessage,
+  key: CompleteKey,
   content: proto.IMessage,
   resolve: JidResolver,
   ts: number,
@@ -224,10 +240,10 @@ function carrierAction(
   const targetId = protocol?.key?.id;
   if (!protocol || !targetId) return null;
   const base = {
-    chatJid: chatOf(message.key, resolve),
+    chatJid: chatOf(key, resolve),
     targetId,
-    actor: actorOf(message.key, resolve),
-    carrierId: message.key.id ?? null,
+    actor: actorOf(key, resolve),
+    carrierId: key.id,
   };
   if (protocol.type === ProtocolType.REVOKE) return { ...base, type: "revoke", ts };
   if (protocol.type === ProtocolType.MESSAGE_EDIT && protocol.editedMessage) {
@@ -244,7 +260,7 @@ function quoteOf(context: proto.IContextInfo | null, chatJid: string, resolve: J
   const quoted = textOf(extractMessageContent(context.quotedMessage));
   return {
     quotedId: context.stanzaId,
-    quotedChatJid: context.remoteJid ? resolve.chat(jidNormalizedUser(context.remoteJid)) : chatJid,
+    quotedChatJid: context.remoteJid ? resolve.chat(context.remoteJid) : chatJid,
     quotedParticipant: context.participant ? resolve.user(context.participant) : null,
     quotedText: quoted.text ?? quoted.caption ?? quoted.fileName,
   };
@@ -265,15 +281,22 @@ const VIEW_ONCE_WRAPPERS = [
   "viewOnceMessageV2",
   "viewOnceMessageV2Extension",
 ] as const;
-const OTHER_WRAPPERS = ["ephemeralMessage", "documentWithCaptionMessage", "editedMessage"] as const;
+// the rest of what Baileys' normalizeMessageContent unwraps
+const OTHER_WRAPPERS = [
+  "ephemeralMessage",
+  "documentWithCaptionMessage",
+  "editedMessage",
+  "associatedChildMessage",
+  "groupStatusMessage",
+  "groupStatusMessageV2",
+] as const;
 
-function isViewOnce(message: WAMessage): boolean {
-  if (message.key.isViewOnce) return true;
+/** Unwrapping drops the view-once wrapper, so the raw message is searched for one. */
+function isViewOnce(message: WAMessage, body: { viewOnce?: boolean | null }): boolean {
+  if (message.key.isViewOnce || body.viewOnce) return true;
   let content = message.message;
   for (let depth = 0; content && depth < 5; depth++) {
     if (VIEW_ONCE_WRAPPERS.some((wrapper) => content?.[wrapper])) return true;
-    const type = contentTypeOf(content);
-    if (type && (content[type] as { viewOnce?: boolean | null } | null)?.viewOnce) return true;
     content = OTHER_WRAPPERS.map((wrapper) => content?.[wrapper]?.message).find(Boolean);
   }
   return false;

@@ -28,7 +28,7 @@ interface Target {
  * count too, so a copy decrypted later cannot bring back what was edited or revoked.
  */
 export function applyAction(ctx: IngestContext, action: MessageAction): void {
-  const row = ctx.store.messages.get(action.chatJid, action.targetId);
+  const row = ctx.store.messages.get({ chatJid: action.chatJid, id: action.targetId });
   if (!row) {
     if (action.type === "revoke") awaitSender(ctx, action);
     return;
@@ -98,7 +98,7 @@ export function withPendingRevokes(ctx: IngestContext, record: MessageRecord): M
  */
 export function withStoredEdit(ctx: IngestContext, record: MessageRecord): MessageRecord | null {
   if (!record.raw || record.type === PLACEHOLDER_TYPE) return null;
-  const stored = ctx.store.messages.get(record.chatJid, record.id);
+  const stored = ctx.store.messages.get({ chatJid: record.chatJid, id: record.id });
   if (!stored?.raw || stored.deleted_at !== null || stored.edited_at === null) return null;
   const edit = normalizeMessageContent(parseRaw(stored.raw).message?.editedMessage?.message);
   const message = parseRaw(record.raw);
@@ -149,8 +149,7 @@ function foldEdit(message: WAMessage, edited: proto.IMessage): void {
 function applyRevoke(ctx: IngestContext, row: MessageRow, deletedAt: number): void {
   const key = { chatJid: row.chat_jid, id: row.id };
   ctx.store.messages.tombstone(key, deletedAt, revokedRaw(row.raw));
-  const file = ctx.store.media.remove(key);
-  if (file) ctx.orphanedFiles.push(file);
+  ctx.orphan(ctx.store.media.remove(key));
 }
 
 /** Fails closed: a revoke whose target's sender is unknown waits for a copy that names it. */

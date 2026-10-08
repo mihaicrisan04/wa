@@ -31,9 +31,10 @@ A Bun workspace (Bun 1.4, isolated linker). Every package declares what it impor
 
 | module                   | responsibility                                                                                                           |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `config.ts`              | `WA_HOME`, `WA_PORT` (7373), `WA_LOG_LEVEL`; sets `umask 077` before anything is created                                 |
+| `config.ts`              | `WA_HOME` and every path in it, `WA_PORT` (7373), `WA_LOG_LEVEL`; sets `umask 077` before anything is created            |
 | `whatsapp/client.ts`     | the `WhatsAppClient` seam, a `Pick` of Baileys' `WASocket`, so a Baileys API change breaks `tsc` rather than production  |
 | `whatsapp/connection.ts` | socket lifecycle, link/relink, reconnects                                                                                |
+| `whatsapp/identity.ts`   | canonical jids: a person or 1:1 chat is keyed by its phone number once its LID mapping is known                          |
 | `whatsapp/normalize.ts`  | `WAMessage` → `MessageRecord` with Baileys' own helpers; edit/revoke/reaction carriers are recognized and never stored   |
 | `whatsapp/outgoing.ts`   | outgoing content; images become JPEG with a thumbnail and dimensions                                                     |
 | `whatsapp/media.ts`      | on-demand downloads (with media re-upload requests) into the media cache                                                 |

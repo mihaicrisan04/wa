@@ -1,16 +1,17 @@
 import type { WAMessageKey, proto } from "@whiskeysockets/baileys";
+import { removeFiles } from "../fs";
 import type { Logger } from "../logger";
 import type { Store } from "../store";
 import type { WhatsAppClient } from "../whatsapp/client";
 import type { OwnIdentity } from "../whatsapp/connection";
-import { removeCachedFiles } from "../whatsapp/media";
 import { chatOf } from "../whatsapp/normalize";
+import { Identity } from "../whatsapp/identity";
 import { parseRaw } from "../whatsapp/raw";
 import { deleteChats, ingestChat, ingestChatUpdate, ingestContact } from "./chats-contacts";
-import type { IngestContext } from "./context";
+import { ingestContext, type Batch, type IngestContext } from "./context";
 import { GroupCache, ingestGroup, ingestParticipantsUpdate } from "./groups";
 import { ingestHistory, recordHistoryStatus, type HistoryPage } from "./history";
-import { Identity, lookupLids, mappingsIn, unmappedLids, type Batch } from "./lid";
+import { learnMapping, lookupLids, mappingsIn, unmappedLids } from "./lid";
 import {
   applyActions,
   carriersOf,
@@ -25,7 +26,6 @@ export interface IngestOptions {
   logger: Logger;
   /** Own identity from the persisted credentials. */
   me: () => OwnIdentity | null;
-  groups?: GroupCache;
 }
 
 /**
@@ -33,13 +33,11 @@ export interface IngestOptions {
  * strictly one after another.
  */
 export class Ingest {
-  readonly groups: GroupCache;
+  readonly groups = new GroupCache();
   private queue: Promise<void> = Promise.resolve();
   private readonly pageListeners = new Set<(page: HistoryPage) => void>();
 
-  constructor(private readonly options: IngestOptions) {
-    this.groups = options.groups ?? new GroupCache();
-  }
+  constructor(private readonly options: IngestOptions) {}
 
   /** Subscribes to a socket's events; Baileys drops the listener when the socket is retired. */
   attach(client: WhatsAppClient): void {
@@ -68,7 +66,7 @@ export class Ingest {
   messageContent(key: WAMessageKey): proto.IMessage | undefined {
     if (!key.remoteJid || !key.id) return undefined;
     const identity = new Identity(this.options.store, this.options.me());
-    const row = this.options.store.messages.get(chatOf(key, identity), key.id);
+    const row = this.options.store.messages.get({ chatJid: chatOf(key, identity), id: key.id });
     if (!row?.raw || row.deleted_at !== null) return undefined;
     return parseRaw(row.raw).message ?? undefined;
   }
@@ -82,16 +80,11 @@ export class Ingest {
       mappings.push(...(await lookupLids(client, unknown, logger)));
     }
 
-    const ctx: IngestContext = {
-      store,
-      identity: new Identity(store, me),
-      logger,
-      orphanedFiles: [],
-    };
+    const ctx = ingestContext(store, new Identity(store, me), logger);
     let page: HistoryPage | null;
     try {
       page = store.transaction(() => {
-        for (const mapping of mappings) ctx.orphanedFiles.push(...ctx.identity.learn(mapping));
+        for (const mapping of mappings) learnMapping(ctx, mapping);
         return apply(ctx, batch);
       });
     } catch (err) {
@@ -100,13 +93,14 @@ export class Ingest {
     }
     this.groups.apply(batch);
     if (page) for (const listener of this.pageListeners) listener(page);
-    await removeCachedFiles(ctx.orphanedFiles, logger);
+    await removeFiles(ctx.orphanedFiles, logger);
   }
 }
 
 /** Order matters: chats and people exist before messages, deletes come last. */
 function apply(ctx: IngestContext, batch: Batch): HistoryPage | null {
   const history = batch["messaging-history.set"];
+  // only `messages`: each history chat's own list is truncated
   const historyMessages = normalizeMessages(ctx, history?.messages ?? [], "history");
   const liveMessages = normalizeMessages(ctx, batch["messages.upsert"]?.messages ?? [], "live");
   const carriers = carriersOf(historyMessages, liveMessages);
@@ -134,12 +128,5 @@ function apply(ctx: IngestContext, batch: Batch): HistoryPage | null {
   return page;
 }
 
-export {
-  HISTORY_PHASES_KEY,
-  readHistoryPhases,
-  type HistoryPage,
-  type HistoryPhase,
-  type HistoryPhases,
-} from "./history";
-export { Identity } from "./lid";
+export type { HistoryPage } from "./history";
 export { reindex, type ReindexResult } from "./reindex";

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { proto } from "@whiskeysockets/baileys";
-import { readHistoryPhases, type HistoryPage } from "../src/ingest";
+import type { HistoryPage } from "../src/ingest";
 import { readHistorySync } from "../src/queries";
 import { buildChat, buildMessage, content, historySet } from "../src/testing";
 import {
@@ -86,12 +86,18 @@ describe("messaging-history.set", () => {
       lid: ANA_LID,
       phone: "40700000002",
     });
-    expect(h.store.messages.get(ANA_PN, messageRows(h.store, ANA_PN)[0]!.id)?.source).toBe(
-      "history",
-    );
+    expect(
+      h.store.messages.get({ chatJid: ANA_PN, id: messageRows(h.store, ANA_PN)[0]!.id })?.source,
+    ).toBe("history");
     // consolidation keeps the last chunk's sync type and progress
-    expect(readHistoryPhases(h)).toEqual({
-      full: { progress: 60, status: null, explicit: null, chunks: 1, at: expect.any(Number) },
+    expect(h.store.sync.historyPhases()).toEqual({
+      full: {
+        progress: 60,
+        status: null,
+        explicit: null,
+        chunks: 1,
+        updatedAt: expect.any(Number),
+      },
     });
   });
 
@@ -142,8 +148,14 @@ describe("messaging-history.set", () => {
     ]);
     await h.client.idle();
     expect(messageRows(h.store, ANA_PN).map((row) => row.text)).toEqual(["old", "older"]);
-    expect(readHistoryPhases(h)).toEqual({
-      full: { progress: 80, status: null, explicit: null, chunks: 1, at: expect.any(Number) },
+    expect(h.store.sync.historyPhases()).toEqual({
+      full: {
+        progress: 80,
+        status: null,
+        explicit: null,
+        chunks: 1,
+        updatedAt: expect.any(Number),
+      },
     });
     // the listener hears about it once it is stored, with canonical chats
     expect(pages).toEqual([
@@ -175,20 +187,20 @@ describe("messaging-history.set", () => {
         explicit: false,
       },
     });
-    expect(readHistoryPhases(h)).toEqual({
+    expect(h.store.sync.historyPhases()).toEqual({
       initial_bootstrap: {
         progress: null,
         status: "complete",
         explicit: true,
         chunks: 0,
-        at: expect.any(Number),
+        updatedAt: expect.any(Number),
       },
       recent: {
         progress: 40,
         status: "paused",
         explicit: false,
         chunks: 1,
-        at: expect.any(Number),
+        updatedAt: expect.any(Number),
       },
     });
   });
@@ -229,7 +241,7 @@ describe("messaging-history.set", () => {
     await h.emit({
       "messaging-history.set": historySet({ syncType: HistorySyncType.FULL, progress: 90 }),
     });
-    expect(readHistoryPhases(h).full).toMatchObject({ status: "complete", explicit: true });
+    expect(h.store.sync.historyPhases().full).toMatchObject({ status: "complete", explicit: true });
   });
 
   test("past participants are remembered as having left", async () => {

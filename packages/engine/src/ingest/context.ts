@@ -1,6 +1,9 @@
+import type { BaileysEventMap } from "@whiskeysockets/baileys";
 import type { Logger } from "../logger";
 import type { Store } from "../store";
-import type { Identity } from "./lid";
+import type { Identity } from "../whatsapp/identity";
+
+export type Batch = Partial<BaileysEventMap>;
 
 /** What every ingest step gets while it runs inside the batch's transaction. */
 export interface IngestContext {
@@ -8,7 +11,21 @@ export interface IngestContext {
   identity: Identity;
   logger: Logger;
   /** Cached media files to delete once the transaction has committed. */
-  orphanedFiles: string[];
+  readonly orphanedFiles: string[];
+  orphan(...files: (string | null)[]): void;
+}
+
+export function ingestContext(store: Store, identity: Identity, logger: Logger): IngestContext {
+  const orphanedFiles: string[] = [];
+  return {
+    store,
+    identity,
+    logger,
+    orphanedFiles,
+    orphan: (...files) => {
+      for (const file of files) if (file) orphanedFiles.push(file);
+    },
+  };
 }
 
 /**

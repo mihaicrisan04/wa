@@ -1,5 +1,6 @@
 import { PROFILE_CAPABILITIES, type ProfileCapability } from "@wa/sdk";
-import { nowSeconds, type Database } from "./db";
+import { nowSeconds } from "../clock";
+import type { Database } from "./db";
 
 export interface CollectionRow {
   name: string;
@@ -59,6 +60,18 @@ export class CollectionsRepo {
     );
   }
 
+  /** Every collection holding chat `from` holds `to` instead. */
+  moveChat(from: string, to: string): void {
+    this.db
+      .query(
+        `INSERT INTO collection_chats (collection, chat_jid)
+         SELECT collection, $to FROM collection_chats WHERE chat_jid = $from
+         ON CONFLICT DO NOTHING`,
+      )
+      .run({ from, to });
+    this.db.query("DELETE FROM collection_chats WHERE chat_jid = $from").run({ from });
+  }
+
   chats(name: string): string[] {
     return this.db
       .query<{ chat_jid: string }, { name: string }>(
@@ -69,19 +82,15 @@ export class CollectionsRepo {
   }
 }
 
-export interface ProfileRecord {
-  name: string;
-  capabilities: ProfileCapability[];
-  allChats: boolean;
-  collections: string[];
-  createdAt: number;
-}
-
 export interface ProfileSpec {
   name: string;
   capabilities: ProfileCapability[];
   allChats: boolean;
   collections: string[];
+}
+
+export interface ProfileRecord extends ProfileSpec {
+  createdAt: number;
 }
 
 interface ProfileRow {
@@ -110,35 +119,30 @@ export class ProfilesRepo {
 
   /** False when it already exists; every collection must exist (foreign key). */
   create(spec: ProfileSpec): boolean {
-    const created =
-      this.db
-        .query(
-          `INSERT INTO profiles (name, capabilities, all_chats, created_at)
-           VALUES ($name, $capabilities, $allChats, $now) ON CONFLICT (name) DO NOTHING`,
-        )
-        .run({
-          name: spec.name,
-          capabilities: JSON.stringify(spec.capabilities),
-          allChats: spec.allChats ? 1 : 0,
-          now: nowSeconds(),
-        }).changes > 0;
-    if (created) this.setCollections(spec.name, spec.collections);
-    return created;
+    return this.db.transaction(() => {
+      const created =
+        this.db
+          .query(
+            `INSERT INTO profiles (name, capabilities, all_chats, created_at)
+             VALUES ($name, $capabilities, $allChats, $now) ON CONFLICT (name) DO NOTHING`,
+          )
+          .run({ ...profileParams(spec), now: nowSeconds() }).changes > 0;
+      if (created) this.setCollections(spec.name, spec.collections);
+      return created;
+    })();
   }
 
   /** Creates the profile or brings an existing one back to `spec`. */
   put(spec: ProfileSpec): void {
-    if (this.create(spec)) return;
-    this.db
-      .query(
-        "UPDATE profiles SET capabilities = $capabilities, all_chats = $allChats WHERE name = $name",
-      )
-      .run({
-        name: spec.name,
-        capabilities: JSON.stringify(spec.capabilities),
-        allChats: spec.allChats ? 1 : 0,
-      });
-    this.setCollections(spec.name, spec.collections);
+    this.db.transaction(() => {
+      if (this.create(spec)) return;
+      this.db
+        .query(
+          "UPDATE profiles SET capabilities = $capabilities, all_chats = $allChats WHERE name = $name",
+        )
+        .run(profileParams(spec));
+      this.setCollections(spec.name, spec.collections);
+    })();
   }
 
   delete(name: string): boolean {
@@ -171,6 +175,14 @@ export class ProfilesRepo {
       createdAt: row.created_at,
     };
   }
+}
+
+function profileParams(spec: ProfileSpec) {
+  return {
+    name: spec.name,
+    capabilities: JSON.stringify(spec.capabilities),
+    allChats: spec.allChats ? 1 : 0,
+  };
 }
 
 /** Unknown names (e.g. from a newer engine) are dropped rather than trusted. */

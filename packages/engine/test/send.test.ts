@@ -52,7 +52,8 @@ describe("send:self", () => {
     expect(api.client().sent[0]).toMatchObject({ jid: ME_PN, content: { text: "note" } });
     await api.engine.ingest.drain();
     await eventually(
-      () => api.engine.store.messages.get(ME_PN, result.messageId)?.text === "note",
+      () =>
+        api.engine.store.messages.get({ chatJid: ME_PN, id: result.messageId })?.text === "note",
       "the echo to be stored under the fixed id",
     );
   });
@@ -95,8 +96,8 @@ describe("send", () => {
     api.engine.store.collections.addChat("master", MASTER);
     const result = await sent(await send(token, { to: MASTER, text: "secret text" }));
     const [row] = api.engine.store.audit.list({ profile: "master-send", limit: 5 });
-    expect(row).toMatchObject({ action: "send", chat_jid: MASTER });
-    expect(JSON.parse(row!.detail!)).toEqual({ outboxId: result.outboxId, kind: "text" });
+    expect(row).toMatchObject({ action: "send", chat: MASTER });
+    expect(row!.detail).toEqual({ outboxId: result.outboxId, kind: "text" });
     expect(JSON.stringify(row)).not.toContain("secret text");
   });
 

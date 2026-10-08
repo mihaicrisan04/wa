@@ -85,7 +85,7 @@ const tombstone = expect.objectContaining({
 });
 
 function expectGone() {
-  expect(h.store.search("secret")).toEqual([]);
+  expect(h.store.messages.search("secret")).toEqual([]);
   expect(h.store.media.get({ chatJid: GROUP, id: "3EB0GONE" })).toBeNull();
   expect(h.ingest.messageContent(keyOf(target()))).toBeUndefined();
 }
@@ -98,12 +98,12 @@ describe("revokes", () => {
       buildMessage({ chat: GROUP, participant: ANA_PN, message: content.revoke(keyOf(message)) }),
     );
 
-    expect(h.store.messages.get(GROUP, "3EB0GONE")).toMatchObject({
+    expect(h.store.messages.get({ chatJid: GROUP, id: "3EB0GONE" })).toMatchObject({
       type: "revoked",
       caption: null,
       has_media: 0,
     });
-    expect(h.store.messages.get(GROUP, "3EB0GONE")?.deleted_at).toBeGreaterThan(0);
+    expect(h.store.messages.get({ chatJid: GROUP, id: "3EB0GONE" })?.deleted_at).toBeGreaterThan(0);
     expectGone();
   });
 
@@ -118,7 +118,7 @@ describe("revokes", () => {
         },
       ],
     });
-    expect(h.store.messages.get(GROUP, "3EB0GONE")?.type).toBe("revoked");
+    expect(h.store.messages.get({ chatJid: GROUP, id: "3EB0GONE" })?.type).toBe("revoked");
   });
 
   test("a spoofed revoke from a non-admin is ignored", async () => {
@@ -135,7 +135,7 @@ describe("revokes", () => {
         },
       ],
     });
-    expect(h.store.messages.get(GROUP, "3EB0GONE")).toMatchObject({
+    expect(h.store.messages.get({ chatJid: GROUP, id: "3EB0GONE" })).toMatchObject({
       type: "image",
       caption: "secret",
       deleted_at: null,
@@ -149,7 +149,7 @@ describe("revokes", () => {
         messages: [buildMessage({ chat: ANA_PN, id: "3EB0OLD", message: null, stubType: REVOKE })],
       },
     });
-    expect(h.store.messages.get(ANA_PN, "3EB0OLD")?.type).toBe("revoked");
+    expect(h.store.messages.get({ chatJid: ANA_PN, id: "3EB0OLD" })?.type).toBe("revoked");
   });
 });
 
@@ -217,7 +217,7 @@ describe("a revoke that arrives before its message can be checked", () => {
       buildMessage({ chat: GROUP, participant: EVE_PN, message: content.revoke(keyOf(message)) }),
     );
     await upsert(message);
-    expect(h.store.messages.get(GROUP, "3EB0GONE")).toMatchObject({
+    expect(h.store.messages.get({ chatJid: GROUP, id: "3EB0GONE" })).toMatchObject({
       type: "image",
       caption: "secret",
     });
