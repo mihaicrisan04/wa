@@ -14,4 +14,5 @@ export {
 } from "./client";
 export { phaseSummary, phoneOf, plural, syncSummary } from "./format";
 export { isFinal, linkStep, type LinkStep } from "./link";
+export { defaultHome, raycastTokenPath, tokensDir } from "./paths";
 export * from "./types";

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { ConfigError, DEFAULT_PORT, defaultHome, loadConfig } from "../src/config";
+import { defaultHome, raycastTokenPath } from "@wa/sdk";
+import { ConfigError, DEFAULT_PORT, loadConfig } from "../src/config";
 
 describe("loadConfig", () => {
   test("defaults to the macOS data dir, port 7373 and info logs", () => {
@@ -32,5 +33,15 @@ describe("loadConfig", () => {
     ["WA_LOG_LEVEL", "loud"],
   ])("rejects %s=%s", (name, value) => {
     expect(() => loadConfig({ [name]: value })).toThrow(ConfigError);
+  });
+});
+
+describe("@wa/sdk paths", () => {
+  test("the default home sits under the user's Application Support", () => {
+    expect(defaultHome("/Users/me")).toBe("/Users/me/Library/Application Support/wa");
+  });
+
+  test("the raycast token lives in WA_HOME/tokens", () => {
+    expect(raycastTokenPath("/tmp/wa home")).toBe("/tmp/wa home/tokens/raycast.token");
   });
 });

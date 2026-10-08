@@ -2,10 +2,8 @@ export {
   ConfigError,
   ENGINE_VERSION,
   databasePath,
-  defaultHome,
   loadConfig,
   socketPath,
-  tokensDir,
   type EngineConfig,
 } from "./config";
 export { writeTokenFile } from "./tokens";

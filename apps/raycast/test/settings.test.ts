@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { DEFAULT_PORT, engineUrl, WaApiError } from "@wa/sdk";
+import { DEFAULT_PORT, engineUrl, raycastTokenPath, WaApiError } from "@wa/sdk";
 import { describeError } from "../src/lib/errors";
-import { MissingTokenError, parsePort, raycastTokenPath, resolveToken } from "../src/lib/settings";
+import { MissingTokenError, parsePort, resolveToken } from "../src/lib/settings";
 import { useTempDir } from "./support";
 
 const home = useTempDir();
