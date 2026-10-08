@@ -35,5 +35,10 @@ export function linkStep({ state, qr }: Qr, pairingStarted: boolean): LinkStep {
 
 /** Steps that polling the pairing state can't move past. */
 export function isFinal(step: LinkStep): boolean {
-  return step.kind === "linked" || step.kind === "stopped" || step.kind === "replaced";
+  return (
+    step.kind === "linked" ||
+    step.kind === "stopped" ||
+    step.kind === "replaced" ||
+    step.kind === "engine_stopped"
+  );
 }

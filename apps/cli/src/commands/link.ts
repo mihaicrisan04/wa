@@ -69,6 +69,14 @@ async function waitForLink(wa: WaClient, io: CommandIO): Promise<number> {
           io.out(await QRCode.toString(step.qr, { type: "terminal", small: true }));
           io.out("scan it in WhatsApp → Linked devices → Link a device");
         }
+        break;
+      case "start":
+      case "connecting":
+      case "waiting":
+        break;
+      default:
+        // a new step kind fails to compile here until waitForLink handles it
+        step satisfies never;
     }
     await Bun.sleep(io.pollMs ?? POLL_MS);
   }

@@ -23,11 +23,11 @@ describe("link flow", () => {
     expect(step("open")).toBe("linked");
   });
 
-  test("polling stops once linked, stopped or replaced", () => {
-    const final = (["open", "replaced"] as const).map((state) =>
+  test("polling stops once linked, stopped, replaced or the engine stops", () => {
+    const final = (["open", "replaced", "stopped"] as const).map((state) =>
       isFinal(linkStep({ state, qr: null }, true)),
     );
-    expect(final).toEqual([true, true]);
+    expect(final).toEqual([true, true, true]);
     expect(isFinal({ kind: "stopped" })).toBe(true);
     expect(isFinal({ kind: "qr", qr: "x" })).toBe(false);
     expect(isFinal({ kind: "connecting" })).toBe(false);
