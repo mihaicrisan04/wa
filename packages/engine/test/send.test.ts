@@ -143,7 +143,10 @@ describe("outbox", () => {
     await eventually(() => entry(result.outboxId).status === "sent", "the upload");
     const content = api.client().sent[0]!.content as { fileName: string; caption: string };
     expect(content).toMatchObject({ fileName: "notes.pdf", caption: "see attached" });
-    expect(await stat(row.file_path!).catch(() => null)).toBeNull();
+    await eventually(
+      async () => (await stat(row.file_path!).catch(() => null)) === null,
+      "the outbox file removal",
+    );
   });
 
   test("an image that can't be decoded fails instead of retrying", async () => {
