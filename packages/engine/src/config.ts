@@ -56,6 +56,11 @@ export function databasePath(home: string): string {
   return join(home, "wa.db");
 }
 
+/** The admin channel: the CLI talks to the engine over this unix socket. */
+export function socketPath(home: string): string {
+  return join(home, "engine.sock");
+}
+
 /** Every file the engine creates is 0600 and every directory 0700. */
 export function restrictFileModes(): void {
   process.umask(0o077);

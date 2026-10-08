@@ -4,10 +4,16 @@ export {
   ENGINE_VERSION,
   defaultHome,
   loadConfig,
+  socketPath,
   type EngineConfig,
   type LogLevel,
 } from "./config";
 export { startEngine, type Engine, type StartEngineOptions } from "./engine";
+export { EngineRunningError } from "./api/socket";
+export { createApp, type App, type ApiDeps, type Transport } from "./api/app";
+export { RAYCAST_PROFILE, authenticate, hashToken, issueToken, raycastTokenPath } from "./access";
+export { ADMIN, assertCan, can, scopeSql, type Principal } from "./policy";
+export { Outbox, type OutgoingMessage } from "./outbox";
 export { Ingest, reindex, type ReindexResult } from "./ingest";
 export { reindexHome } from "./maintenance";
 export { openStore, Store, toFtsQuery } from "./store";

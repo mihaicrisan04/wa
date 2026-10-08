@@ -3,7 +3,6 @@ import { createWaClient } from "@wa/sdk";
 import { Hono } from "hono";
 import pino from "pino";
 import { z } from "zod";
-import { createApp } from "../src/api/app";
 import { ApiError, errorHandler } from "../src/api/errors";
 import { startEngine, type Engine } from "../src/engine";
 import { FakeWhatsAppClient, makeTempHome, type TempHome } from "../src/testing";
@@ -35,45 +34,55 @@ describe("engine HTTP listener", () => {
     expect(response.status).toBe(200);
   });
 
-  test("unknown routes are a JSON 404", async () => {
+  test("everything but health needs a token, even unknown routes", async () => {
     const response = await fetch(`http://127.0.0.1:${engine.port}/v1/nope`);
+    expect(response.status).toBe(401);
+    expect(response.headers.get("www-authenticate")).toBe("Bearer");
+  });
+
+  test("unknown routes are a JSON 404", async () => {
+    const response = await fetch("http://localhost/v1/nope", { unix: engine.socketPath });
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ error: { code: "not_found", message: "not found" } });
   });
-});
 
-describe("local-only guard", () => {
-  const app = createApp({ version: "test", logger, port: () => 7373 });
-  const health = (headers: Record<string, string>) => app.request("/v1/health", { headers });
+  describe("local-only guard", () => {
+    const health = (headers: Record<string, string>) =>
+      engine.apps.tcp.request("/v1/health", { headers });
 
-  test.each(["127.0.0.1:7373", "localhost:7373", "LOCALHOST:7373"])(
-    "allows Host %s",
-    async (host) => {
-      expect((await health({ host })).status).toBe(200);
-    },
-  );
+    test.each(["127.0.0.1:%p", "localhost:%p", "LOCALHOST:%p"])("allows Host %s", async (host) => {
+      expect((await health({ host: host.replace("%p", String(engine.port)) })).status).toBe(200);
+    });
 
-  test.each(["evil.example:7373", "127.0.0.1:7374", "127.0.0.1", "localhost"])(
-    "rejects Host %s (DNS rebinding)",
-    async (host) => {
-      const response = await health({ host });
-      expect(response.status).toBe(403);
-      expect(await response.json()).toMatchObject({ error: { code: "forbidden_host" } });
-    },
-  );
+    test.each(["evil.example:%p", "127.0.0.1:1", "127.0.0.1", "localhost"])(
+      "rejects Host %s (DNS rebinding)",
+      async (host) => {
+        const response = await health({ host: host.replace("%p", String(engine.port)) });
+        expect(response.status).toBe(403);
+        expect(await response.json()).toMatchObject({ error: { code: "forbidden_host" } });
+      },
+    );
 
-  test("rejects a missing Host", async () => {
-    expect((await app.request("http://x/v1/health", { headers: {} })).status).toBe(403);
+    test("rejects a missing Host", async () => {
+      expect((await engine.apps.tcp.request("http://x/v1/health", { headers: {} })).status).toBe(
+        403,
+      );
+    });
+
+    test.each(["http://127.0.0.1:%p", "null", "https://evil.example"])(
+      "rejects any Origin (%s), also on authenticated routes",
+      async (origin) => {
+        const host = `127.0.0.1:${engine.port}`;
+        for (const path of ["/v1/health", "/v1/status"]) {
+          const response = await engine.apps.tcp.request(path, {
+            headers: { host, origin: origin.replace("%p", String(engine.port)) },
+          });
+          expect(response.status).toBe(403);
+          expect(await response.json()).toMatchObject({ error: { code: "forbidden_origin" } });
+        }
+      },
+    );
   });
-
-  test.each(["http://127.0.0.1:7373", "null", "https://evil.example"])(
-    "rejects any Origin (%s)",
-    async (origin) => {
-      const response = await health({ host: "127.0.0.1:7373", origin });
-      expect(response.status).toBe(403);
-      expect(await response.json()).toMatchObject({ error: { code: "forbidden_origin" } });
-    },
-  );
 });
 
 describe("error handler", () => {

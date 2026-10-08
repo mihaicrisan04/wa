@@ -26,7 +26,7 @@ type Jid = string | null | undefined;
 export class Identity implements JidResolver {
   constructor(
     private readonly store: Store,
-    private readonly own: OwnIdentity | null,
+    readonly own: OwnIdentity | null,
   ) {}
 
   me(): string | null {

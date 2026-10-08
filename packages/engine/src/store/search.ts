@@ -1,4 +1,7 @@
+import { SNIPPET_CLOSE, SNIPPET_OPEN } from "@wa/sdk";
 import type { Database } from "./db";
+
+export { SNIPPET_CLOSE, SNIPPET_OPEN };
 
 const HAS_WORD = /[\p{L}\p{N}]/u;
 
@@ -28,12 +31,12 @@ export interface SearchHit {
 
 export interface SearchOptions {
   limit?: number;
-  /** Restricts the search to these chats; scoping beyond that is the caller's job. */
+  offset?: number;
+  /** Restricts the search to these chats. */
   chatJids?: string[];
+  /** Any further condition on the messages row `m` (access scope, filters). */
+  where?: { sql: string; params: Record<string, string | number | null> };
 }
-
-export const SNIPPET_OPEN = "\u0002";
-export const SNIPPET_CLOSE = "\u0003";
 
 /** Full-text search over text, captions and file names, best matches first. */
 export function searchMessages(
@@ -45,18 +48,21 @@ export function searchMessages(
   if (!query) return [];
   const chats = options.chatJids;
   const chatFilter = chats ? `AND m.chat_jid IN (SELECT value FROM json_each($chats))` : "";
+  const where = options.where ? `AND (${options.where.sql})` : "";
   return db
-    .query<SearchHit, Record<string, string | number>>(
+    .query<SearchHit, Record<string, string | number | null>>(
       `SELECT m.rowid, m.chat_jid, m.id, m.ts, f.rank,
          snippet(messages_fts, -1, '${SNIPPET_OPEN}', '${SNIPPET_CLOSE}', '…', 12) AS snippet
        FROM messages_fts AS f JOIN messages AS m ON m.rowid = f.rowid
-       WHERE messages_fts MATCH $query AND m.deleted_at IS NULL ${chatFilter}
-       ORDER BY f.rank, m.ts DESC
-       LIMIT $limit`,
+       WHERE messages_fts MATCH $query AND m.deleted_at IS NULL ${chatFilter} ${where}
+       ORDER BY f.rank, m.ts DESC, m.rowid DESC
+       LIMIT $limit OFFSET $offset`,
     )
     .all({
+      ...options.where?.params,
       query,
       limit: options.limit ?? 50,
+      offset: options.offset ?? 0,
       ...(chats ? { chats: JSON.stringify(chats) } : {}),
     });
 }
