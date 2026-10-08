@@ -1,63 +1,43 @@
-import { parseArgs } from "node:util";
-import { UsageError, type Command } from "../command";
+import { positiveInt } from "../args";
+import { defineGroup, defineSubcommand } from "../define";
 import { installService, serviceLogs, serviceStatus, uninstallService } from "../service/manage";
-import { dispatch } from "../subcommands";
-import { positiveInt } from "./chats";
 
-const USAGE = `usage:
-  wa service install
-  wa service uninstall
-  wa service status
-  wa service logs [-n lines] [-f]
+const DEFAULT_LOG_LINES = 50;
 
-install copies this binary to ~/.local/bin/wa and runs \`wa serve\` as the launchd
+const INSTALL_NOTE = `install copies this binary to ~/.local/bin/wa and runs \`wa serve\` as the launchd
 agent com.mihaicrisan.wa (at login, restarted when it exits, logs in
 ~/Library/Logs/wa/engine.log). WA_HOME, WA_PORT and WA_LOG_LEVEL set while
 installing are kept for the service.`;
 
-const DEFAULT_LOG_LINES = 50;
-
-/** These subcommands take no arguments. */
-function noArgs(rest: string[]): void {
-  if (rest.length) throw new UsageError(`unexpected "${rest[0]}"\n\n${USAGE}`);
-}
-
-export const service: Command = {
+export const service = defineGroup({
   name: "service",
   summary: "run the engine in the background with launchd",
-  run: (args, io) =>
-    dispatch(
-      "service",
-      USAGE,
-      {
-        async install(rest) {
-          noArgs(rest);
-          return installService(io);
-        },
-        async uninstall(rest) {
-          noArgs(rest);
-          return uninstallService(io);
-        },
-        async status(rest) {
-          noArgs(rest);
-          return serviceStatus(io);
-        },
-        async logs(rest) {
-          const { values } = parseArgs({
-            args: rest,
-            options: {
-              lines: { type: "string", short: "n" },
-              follow: { type: "boolean", short: "f" },
-            },
-            strict: true,
-          });
-          return serviceLogs(io, {
-            lines: positiveInt(values.lines, "--lines") ?? DEFAULT_LOG_LINES,
-            follow: values.follow ?? false,
-          });
-        },
+  notes: INSTALL_NOTE,
+  subcommands: {
+    install: defineSubcommand({
+      usage: "wa service install",
+      description: INSTALL_NOTE,
+      run: (_input, io) => installService(io),
+    }),
+    uninstall: defineSubcommand({
+      usage: "wa service uninstall",
+      run: (_input, io) => uninstallService(io),
+    }),
+    status: defineSubcommand({
+      usage: "wa service status",
+      run: (_input, io) => serviceStatus(io),
+    }),
+    logs: defineSubcommand({
+      usage: "wa service logs [-n lines] [-f]",
+      options: {
+        lines: { type: "string", short: "n" },
+        follow: { type: "boolean", short: "f" },
       },
-      args,
-      io,
-    ),
-};
+      run: ({ values }, io) =>
+        serviceLogs(io, {
+          lines: positiveInt(values.lines, "--lines") ?? DEFAULT_LOG_LINES,
+          follow: values.follow ?? false,
+        }),
+    }),
+  },
+});

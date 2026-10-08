@@ -2,10 +2,9 @@ import { Action, ActionPanel, Detail, Icon } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
 import { useEffect } from "react";
 import { LinkView } from "./components/link-view";
-import { engineClient, enginePort } from "./lib/engine";
-import { describeError } from "./lib/errors";
-import { escapeMarkdown } from "./lib/markdown";
-import { needsLink, statusMarkdown, statusRows } from "./lib/status-view";
+import { describeEngineError, engineClient, enginePort } from "./lib/engine";
+import { errorMarkdown } from "./lib/markdown";
+import { statusMarkdown, statusRows } from "./lib/status-view";
 
 const REFRESH_MS = 5_000;
 
@@ -25,10 +24,8 @@ export default function Command() {
   }, [revalidate]);
 
   let markdown = "";
-  if (error) {
-    const { title, message } = describeError(error, port);
-    markdown = `# ${escapeMarkdown(title)}\n\n${escapeMarkdown(message)}`;
-  } else if (data) {
+  if (error) markdown = errorMarkdown(describeEngineError(error));
+  else if (data) {
     markdown = statusMarkdown(data);
   }
 
@@ -56,7 +53,7 @@ export default function Command() {
       }
       actions={
         <ActionPanel>
-          {data && needsLink(data) ? (
+          {data?.needsLink ? (
             <Action.Push title="Link WhatsApp" icon={Icon.Link} target={<LinkView />} />
           ) : null}
           {refresh}

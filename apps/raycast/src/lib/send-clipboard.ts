@@ -7,8 +7,7 @@ import {
   waitForDelivery,
   type SendableContent,
 } from "./deliver";
-import { engineClient, enginePort } from "./engine";
-import { describeError } from "./errors";
+import { engineClient, failToast } from "./engine";
 import { removeExtractedImages } from "./temp-files";
 
 export interface SendTarget {
@@ -51,10 +50,7 @@ export async function sendWithToast(
     toast.message = report.message ?? describeContent(content);
     return report.ok;
   } catch (error) {
-    const { title, message } = describeError(error, enginePort());
-    toast.style = Toast.Style.Failure;
-    toast.title = title;
-    toast.message = message;
+    failToast(toast, error);
     return false;
   }
 }

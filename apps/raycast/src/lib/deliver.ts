@@ -29,7 +29,7 @@ export async function sendContent(
   }
 }
 
-export interface DeliveryOptions {
+interface DeliveryOptions {
   timeoutMs?: number;
   intervalMs?: number;
   sleep?: (ms: number) => Promise<void>;
@@ -55,7 +55,7 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export interface DeliveryReport {
+interface DeliveryReport {
   ok: boolean;
   title: string;
   message?: string;

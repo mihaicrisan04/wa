@@ -1,10 +1,11 @@
 import { loadConfig, socketPath } from "@wa/engine";
-import { createWaClient, type WaClient } from "@wa/sdk";
+import { createWaClient, START_ENGINE, type WaClient } from "@wa/sdk";
+import { errorCode } from "./exec";
 
 export class EngineUnavailableError extends Error {
   constructor(readonly socket: string) {
     super(
-      "the wa engine is not running: start it with `wa service install` (or `wa serve` in the foreground); `wa service status` shows why a service stopped",
+      `the wa engine is not running: start it with ${START_ENGINE}; \`wa service status\` shows why a service stopped`,
     );
   }
 }
@@ -26,10 +27,13 @@ export function engineClient(env: Record<string, string | undefined>): WaClient 
   });
 }
 
+const CONNECTION_ERRORS = new Set([
+  "FailedToOpenSocket",
+  "ConnectionRefused",
+  "ENOENT",
+  "ECONNREFUSED",
+]);
+
 function isConnectionError(err: unknown): boolean {
-  const code = (err as { code?: unknown } | null)?.code;
-  return (
-    typeof code === "string" &&
-    ["FailedToOpenSocket", "ConnectionRefused", "ENOENT", "ECONNREFUSED"].includes(code)
-  );
+  return CONNECTION_ERRORS.has(errorCode(err) ?? "");
 }

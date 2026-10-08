@@ -1,9 +1,16 @@
-import { parseArgs } from "node:util";
-import { WaApiError, type ConnectionState, type Status, type WaClient } from "@wa/sdk";
+import {
+  linkStep,
+  plural,
+  syncSummary,
+  WaApiError,
+  type ConnectionState,
+  type Status,
+  type WaClient,
+} from "@wa/sdk";
 import QRCode from "qrcode";
-import { EXIT_FAILURE, type Command, type CommandIO } from "../command";
+import { FailureError, type CommandIO } from "../command";
+import { defineCommand } from "../define";
 import { engineClient } from "../engine-client";
-import { syncSummary } from "../history";
 import { who } from "../output";
 
 const POLL_MS = 1_000;
@@ -14,57 +21,53 @@ const HISTORY_IDLE_MS = 3 * 60_000;
 /** States in which the history sync can still move. */
 const SYNCING: ReadonlySet<ConnectionState> = new Set(["open", "connecting", "reconnecting"]);
 
-export const link: Command = {
+export const link = defineCommand({
   name: "link",
   summary: "link WhatsApp by scanning a QR code (--relink replaces the linked device)",
-  async run(args, io) {
-    const { values } = parseArgs({
-      args,
-      options: { relink: { type: "boolean" }, help: { type: "boolean", short: "h" } },
-      strict: true,
-    });
-    if (values.help) {
-      io.out(
-        "usage: wa link [--relink]\n\nShows a QR code to scan in WhatsApp → Linked devices → Link a device,\nthen follows the history sync until WhatsApp finishes or pauses it.\nCtrl-C stops watching; the sync carries on in the engine (see `wa status`).",
-      );
-      return 0;
-    }
+  usage: "wa link [--relink]",
+  description:
+    "Shows a QR code to scan in WhatsApp → Linked devices → Link a device,\nthen follows the history sync until WhatsApp finishes or pauses it.\nCtrl-C stops watching; the sync carries on in the engine (see `wa status`).",
+  options: { relink: { type: "boolean" } },
+  async run({ values }, io) {
     const wa = engineClient(io.env);
     try {
       await wa.link({ relink: values.relink });
     } catch (err) {
       if (!(err instanceof WaApiError) || err.code !== "already_linked") throw err;
       const { me } = await wa.status();
-      io.err(`wa link: already linked as ${who(me?.jid ?? null)}; use --relink to link again`);
-      return EXIT_FAILURE;
+      throw new FailureError(
+        `already linked as ${who(me?.jid ?? null)}; use --relink to link again`,
+      );
     }
     return waitForLink(wa, io);
   },
-};
+});
 
 async function waitForLink(wa: WaClient, io: CommandIO): Promise<number> {
   const deadline = Date.now() + GIVE_UP_MS;
   let shown: string | null = null;
   while (Date.now() < deadline) {
-    const { state, qr } = await wa.qr();
-    if (state === "open") {
-      const { me } = await wa.status();
-      io.out(`linked as ${who(me?.jid ?? null)}`);
-      return watchHistory(wa, io);
-    }
-    if (state === "not_linked" || state === "needs_link") {
-      io.err("wa link: pairing stopped before a QR code was scanned; run `wa link` again");
-      return EXIT_FAILURE;
-    }
-    if (qr && qr !== shown) {
-      shown = qr;
-      io.out(await QRCode.toString(qr, { type: "terminal", small: true }));
-      io.out("scan it in WhatsApp → Linked devices → Link a device");
+    const step = linkStep(await wa.qr(), true);
+    switch (step.kind) {
+      case "linked": {
+        const { me } = await wa.status();
+        io.out(`linked as ${who(me?.jid ?? null)}`);
+        return watchHistory(wa, io);
+      }
+      case "stopped":
+        throw new FailureError("pairing stopped before a QR code was scanned; run `wa link` again");
+      case "replaced":
+        throw new FailureError("another session took over this WhatsApp link (`wa status`)");
+      case "qr":
+        if (step.qr !== shown) {
+          shown = step.qr;
+          io.out(await QRCode.toString(step.qr, { type: "terminal", small: true }));
+          io.out("scan it in WhatsApp → Linked devices → Link a device");
+        }
     }
     await Bun.sleep(io.pollMs ?? POLL_MS);
   }
-  io.err("wa link: timed out waiting for the link");
-  return EXIT_FAILURE;
+  throw new FailureError("timed out waiting for the link");
 }
 
 async function watchHistory(wa: WaClient, io: CommandIO): Promise<number> {
@@ -77,10 +80,9 @@ async function watchHistory(wa: WaClient, io: CommandIO): Promise<number> {
   for (;;) {
     const current = await wa.status();
     if (!SYNCING.has(current.state)) {
-      io.err(
-        `wa link: the connection is ${current.state}, the history sync stopped (\`wa status\`)`,
+      throw new FailureError(
+        `the connection is ${current.state}, the history sync stopped (\`wa status\`)`,
       );
-      return EXIT_FAILURE;
     }
     const line = progressLine(current);
     if (line !== shown) io.out(line);
@@ -104,15 +106,11 @@ async function watchHistory(wa: WaClient, io: CommandIO): Promise<number> {
 
 function progressLine({ history, counts }: Status): string {
   const sync = history.phases.length ? syncSummary(history) : "waiting for the phone";
-  return `history: ${sync}, ${amount(counts.messages, "message")} stored`;
+  return `history: ${sync}, ${plural(counts.messages, "message")} stored`;
 }
 
 function doneLine({ history, counts }: Status): string {
-  const stored = `${amount(counts.chats, "chat")}, ${amount(counts.messages, "message")} stored`;
+  const stored = `${plural(counts.chats, "chat")}, ${plural(counts.messages, "message")} stored`;
   if (history.status === "complete") return `history sync complete: ${stored}`;
   return `history sync ${syncSummary(history)}: ${stored}; WhatsApp may send the rest later, and \`wa backfill <chat>\` fetches older messages`;
-}
-
-function amount(count: number, noun: string): string {
-  return `${count.toLocaleString("en-US")} ${noun}${count === 1 ? "" : "s"}`;
 }

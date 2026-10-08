@@ -77,5 +77,10 @@ export async function ensureRaycastAccess(store: Store, home: string): Promise<v
     if (row.label === RAYCAST_TOKEN_LABEL) store.tokens.revoke(row.id);
   }
   const { token } = issueToken(store, RAYCAST_PROFILE.name, RAYCAST_TOKEN_LABEL);
+  await writeTokenFile(path, token);
+}
+
+/** Written whole or not at all, and only ever readable by the owner. */
+export async function writeTokenFile(path: string, token: string): Promise<void> {
   await writeFileAtomic(path, `${token}\n`);
 }

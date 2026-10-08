@@ -1,20 +1,8 @@
-import type { HistorySync, Status } from "@wa/sdk";
-import { phoneOf, stateLabel } from "./labels";
+import { syncSummary, type Status } from "@wa/sdk";
+import { accountLabel, stateLabel } from "./labels";
 import { escapeMarkdown, formatTime } from "./markdown";
 
-export function historyLabel(history: HistorySync): string {
-  if (history.status === "complete") return "Complete";
-  const progress = history.progress === null ? null : `${Math.round(history.progress)}%`;
-  if (history.status === "paused") return progress ? `Paused at ${progress}` : "Paused";
-  if (progress) return `Syncing, ${progress}`;
-  return history.phases.length ? "Syncing" : "Not started";
-}
-
-export function needsLink(status: Status): boolean {
-  return status.needsLink || status.state === "not_linked";
-}
-
-export interface StatusRow {
+interface StatusRow {
   title: string;
   text: string;
 }
@@ -24,9 +12,9 @@ export function statusRows(status: Status, port: number): StatusRow[] {
     { title: "WhatsApp", text: stateLabel(status.state) },
     {
       title: "Linked As",
-      text: status.me ? (phoneOf(status.me.jid) ?? status.me.jid) : "Not linked",
+      text: status.me ? accountLabel(status.me.jid) : "Not linked",
     },
-    { title: "History Sync", text: historyLabel(status.history) },
+    { title: "History Sync", text: capitalize(syncSummary(status.history)) },
     { title: "Chats", text: status.counts.chats.toLocaleString("en-US") },
     { title: "Messages", text: status.counts.messages.toLocaleString("en-US") },
     { title: "Outbox", text: status.outbox.pending ? `${status.outbox.pending} waiting` : "Empty" },
@@ -41,14 +29,18 @@ export function statusRows(status: Status, port: number): StatusRow[] {
 
 export function statusMarkdown(status: Status): string {
   const heading = `# ${stateLabel(status.state)}`;
-  if (needsLink(status)) return `${heading}\n\nRun **Link WhatsApp** (↵) to scan a QR code.`;
+  if (status.needsLink) return `${heading}\n\nRun **Link WhatsApp** (↵) to scan a QR code.`;
   if (status.state === "replaced") {
     return `${heading}\n\nAnother client took over this WhatsApp link. Restart the engine to reconnect.`;
   }
-  const who = status.me ? ` as ${escapeMarkdown(phoneOf(status.me.jid) ?? status.me.jid)}` : "";
+  const who = status.me ? ` as ${escapeMarkdown(accountLabel(status.me.jid))}` : "";
   const sync =
     status.history.status === "complete"
       ? "History sync is complete."
-      : `History sync: ${historyLabel(status.history).toLowerCase()}.`;
+      : `History sync: ${syncSummary(status.history)}.`;
   return `${heading}\n\nLinked${who}. ${sync}`;
+}
+
+function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }

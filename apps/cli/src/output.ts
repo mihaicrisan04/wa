@@ -1,4 +1,4 @@
-import { SNIPPET_CLOSE, SNIPPET_OPEN, type Message } from "@wa/sdk";
+import { phoneOf, SNIPPET_CLOSE, SNIPPET_OPEN, type Message } from "@wa/sdk";
 
 /** Left-aligned columns, two spaces apart; the last column is not padded. */
 export function table(rows: string[][]): string[] {
@@ -24,17 +24,20 @@ export function time(unixSeconds: number | null | undefined): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-/** `+40700000001` for phone-number jids, the jid otherwise. */
+/** The name, else `+40700000001` for phone-number jids, else the jid. */
 export function who(jid: string | null, name?: string | null): string {
   if (name) return oneLine(name);
   if (!jid) return "?";
-  const phone = /^(\d+)@s\.whatsapp\.net$/.exec(jid)?.[1];
-  return phone ? `+${phone}` : jid;
+  return phoneOf(jid) ?? jid;
+}
+
+export function senderOf(message: Message): string {
+  return message.fromMe ? "me" : who(message.sender, message.senderName);
 }
 
 /** One line per message, so one message can't pass for several. */
 export function messageLine(message: Message): string {
-  const sender = message.fromMe ? "me" : who(message.sender, message.senderName);
+  const sender = senderOf(message);
   const body =
     message.deletedAt !== null
       ? "(deleted)"

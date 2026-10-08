@@ -13,4 +13,5 @@ export {
   type WaClientOptions,
 } from "./client";
 export { phaseSummary, phoneOf, plural, syncSummary } from "./format";
+export { isFinal, linkStep, type LinkStep } from "./link";
 export * from "./types";

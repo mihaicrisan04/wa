@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { tokensDir, writeFileAtomic } from "@wa/engine";
+import { tokensDir } from "@wa/engine";
 import { FailureError } from "../command";
 
 const TOKEN_FORMAT = /^wa_[A-Za-z0-9_-]{43}$/;
@@ -14,11 +14,6 @@ export function projectKey(dir: string): string {
 /** `WA_HOME/tokens/mcp-<profile>-<suffix>.token` */
 export function mcpTokenPath(home: string, profile: string, suffix: string): string {
   return join(tokensDir(home), `mcp-${profile}-${suffix}.token`);
-}
-
-/** Written whole or not at all, and only ever readable by the owner. */
-export async function writeTokenFile(path: string, token: string): Promise<void> {
-  await writeFileAtomic(path, `${token}\n`);
 }
 
 export async function readTokenFile(path: string): Promise<string> {

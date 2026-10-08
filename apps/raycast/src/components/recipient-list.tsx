@@ -1,18 +1,26 @@
 import { Action, ActionPanel, Icon, List } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
-import type { Recipient } from "@wa/sdk";
+import { phoneOf, type ChatKind } from "@wa/sdk";
 import { useState } from "react";
 import { describeContent } from "../lib/clipboard-media";
 import type { SendableContent } from "../lib/deliver";
-import { engineClient, enginePort } from "../lib/engine";
-import { describeError } from "../lib/errors";
-import { chatTitle, kindLabel, phoneOf } from "../lib/labels";
+import { describeEngineError, engineClient } from "../lib/engine";
+import { chatTitle, kindLabel } from "../lib/labels";
 import { sendClipboardTo, sendWithToast, type SendTarget } from "../lib/send-clipboard";
 import { ErrorView, showErrorToast } from "./error-view";
 
 const LIMIT = 50;
 
-async function loadRecipients(query: string): Promise<Recipient[]> {
+const KIND_ICONS: Record<ChatKind, Icon> = {
+  dm: Icon.Person,
+  group: Icon.TwoPeople,
+  self: Icon.Star,
+  broadcast: Icon.Bubble,
+  newsletter: Icon.Bubble,
+  other: Icon.Bubble,
+};
+
+async function loadRecipients(query: string) {
   const client = await engineClient();
   return client.recipients({ q: query.trim() || undefined, limit: LIMIT });
 }
@@ -35,7 +43,7 @@ export function RecipientList({ content }: { content?: SendableContent }) {
       throttle
     >
       {error && !data ? (
-        <ErrorView {...describeError(error, enginePort())} onRetry={revalidate} />
+        <ErrorView {...describeEngineError(error)} onRetry={revalidate} />
       ) : isLoading ? null : (
         <List.EmptyView
           title={query ? "No matching chats" : "No chats yet"}
@@ -47,7 +55,7 @@ export function RecipientList({ content }: { content?: SendableContent }) {
         return (
           <List.Item
             key={recipient.jid}
-            icon={iconFor(recipient)}
+            icon={KIND_ICONS[recipient.kind]}
             title={title}
             subtitle={
               recipient.kind === "dm" && recipient.name ? (phoneOf(recipient.jid) ?? "") : ""
@@ -73,17 +81,4 @@ export function RecipientList({ content }: { content?: SendableContent }) {
       })}
     </List>
   );
-}
-
-function iconFor(recipient: Recipient): Icon {
-  switch (recipient.kind) {
-    case "group":
-      return Icon.TwoPeople;
-    case "self":
-      return Icon.Star;
-    case "dm":
-      return Icon.Person;
-    default:
-      return Icon.Bubble;
-  }
 }

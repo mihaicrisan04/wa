@@ -1,8 +1,8 @@
 import type { HistoryPhase, HistorySync } from "./types";
 
-/** `1 chat`, `2 chats`. */
+/** `1 chat`, `2 chats`, `1,234 messages`. */
 export function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+  return `${count.toLocaleString("en-US")} ${noun}${count === 1 ? "" : "s"}`;
 }
 
 /** `complete`, `paused at 80%`, `in progress (45%)` or `not started`. */

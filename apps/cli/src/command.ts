@@ -20,13 +20,18 @@ export interface CommandIO {
   cwd?: string;
 }
 
-export interface Command {
+export interface Subcommand {
+  usage: string;
+  /** Resolves to the process exit code. */
+  run(args: string[], io: CommandIO): Promise<number>;
+}
+
+export interface Command extends Subcommand {
   name: string;
   summary: string;
   /** Hidden commands work but are left out of `wa --help`. */
   hidden?: boolean;
-  /** Resolves to the process exit code. */
-  run(args: string[], io: CommandIO): Promise<number>;
+  subcommands?: Record<string, Subcommand>;
 }
 
 export const EXIT_USAGE = 2;

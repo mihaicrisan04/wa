@@ -1,5 +1,5 @@
 import { FailureError } from "../command";
-import type { Exec } from "../exec";
+import { firstLine, type Exec } from "../exec";
 
 const SERVER_NAME = "wa";
 
@@ -34,7 +34,7 @@ export function addHeaderCommand(url: string, token: string): string[] {
 /** How a Claude Code without `headersHelper` refuses the key; any other failure is not a fallback. */
 const HEADERS_HELPER_REFUSED = /headersHelper|unrecogni[sz]ed key|unknown key/i;
 
-export type Registration = "headersHelper" | "static header";
+type Registration = "headersHelper" | "static header";
 
 /** Replaces any earlier `wa` server of the project, preferring the headers helper. */
 export async function registerWithClaude(
@@ -44,23 +44,16 @@ export async function registerWithClaude(
 ): Promise<Registration> {
   const removed = await exec(removeCommand(), { cwd: dir });
   if (removed.code !== 0 && !/no mcp server/i.test(removed.stdout + removed.stderr)) {
-    throw new FailureError(
-      `claude mcp remove failed: ${firstLine(removed.stderr || removed.stdout)}`,
-    );
+    throw new FailureError(`claude mcp remove failed: ${firstLine(removed)}`);
   }
   const addedJson = await exec(addJsonCommand(url, helper), { cwd: dir });
   if (addedJson.code === 0) return "headersHelper";
-  const output = addedJson.stderr || addedJson.stdout;
-  if (!HEADERS_HELPER_REFUSED.test(output)) {
-    throw new FailureError(`claude mcp add-json failed: ${firstLine(output)}`);
+  if (!HEADERS_HELPER_REFUSED.test(addedJson.stderr || addedJson.stdout)) {
+    throw new FailureError(`claude mcp add-json failed: ${firstLine(addedJson)}`);
   }
   const added = await exec(addHeaderCommand(url, token), { cwd: dir });
   if (added.code !== 0) {
-    throw new FailureError(`claude mcp add failed: ${firstLine(added.stderr || added.stdout)}`);
+    throw new FailureError(`claude mcp add failed: ${firstLine(added)}`);
   }
   return "static header";
-}
-
-function firstLine(text: string): string {
-  return text.trim().split("\n")[0] || "no output";
 }

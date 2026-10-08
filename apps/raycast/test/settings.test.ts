@@ -1,15 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { DEFAULT_PORT, WaApiError } from "@wa/sdk";
+import { DEFAULT_PORT, engineUrl, WaApiError } from "@wa/sdk";
 import { describeError } from "../src/lib/errors";
-import {
-  MissingTokenError,
-  engineUrl,
-  parsePort,
-  raycastTokenPath,
-  resolveToken,
-} from "../src/lib/settings";
+import { MissingTokenError, parsePort, raycastTokenPath, resolveToken } from "../src/lib/settings";
 import { tempDir } from "./support";
 
 let home: string;
