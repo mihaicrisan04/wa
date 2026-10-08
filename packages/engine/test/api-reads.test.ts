@@ -189,7 +189,7 @@ describe("messages", () => {
     const around = await paged("around=3EB0PAGE3&limit=3");
     expect(ids(around)).toEqual(pageIds(2, 3, 4));
     expect(sides(around)).toEqual({ older: true, newer: true });
-    const after = await paged(`after=${NOW - 10_000 + 45}&limit=10`);
+    const after = await paged(`after=${tsOf(4) + 5}&limit=10`);
     expect(ids(after)).toEqual(pageIds(5, 6));
     expect(sides(after)).toEqual({ older: true, newer: false });
   });
