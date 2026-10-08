@@ -1,6 +1,7 @@
 import {
   linkStep,
   plural,
+  START_ENGINE,
   syncSummary,
   WaApiError,
   type ConnectionState,
@@ -58,12 +59,24 @@ async function waitForLink(wa: WaClient, io: CommandIO): Promise<number> {
         throw new FailureError("pairing stopped before a QR code was scanned; run `wa link` again");
       case "replaced":
         throw new FailureError("another session took over this WhatsApp link (`wa status`)");
+      case "engine_stopped":
+        throw new FailureError(
+          `the wa engine is shutting down: restart it with ${START_ENGINE}, then run \`wa link\` again`,
+        );
       case "qr":
         if (step.qr !== shown) {
           shown = step.qr;
           io.out(await QRCode.toString(step.qr, { type: "terminal", small: true }));
           io.out("scan it in WhatsApp → Linked devices → Link a device");
         }
+        break;
+      case "start":
+      case "connecting":
+      case "waiting":
+        break;
+      default:
+        // a new step kind fails to compile here until waitForLink handles it
+        step satisfies never;
     }
     await Bun.sleep(io.pollMs ?? POLL_MS);
   }

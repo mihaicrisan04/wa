@@ -102,6 +102,18 @@ describe("wa link", () => {
     expect(result.code).toBe(1);
     expect(result.err).toBe("wa link: another session took over this WhatsApp link (`wa status`)");
   });
+
+  test("stops at once when the engine shuts down mid-link", async () => {
+    const linking = run(["link"], env);
+    await pairingStarted();
+    // the engine's shutdown stops the connection first, while the API still answers
+    await api.engine.connection.stop();
+    const result = await linking;
+    expect(result.code).toBe(1);
+    expect(result.err).toBe(
+      "wa link: the wa engine is shutting down: restart it with `wa service install` (or `wa serve` in a terminal), then run `wa link` again",
+    );
+  });
 });
 
 describe("against a running engine", () => {
