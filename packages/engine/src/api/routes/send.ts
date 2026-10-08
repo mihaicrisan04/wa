@@ -2,6 +2,7 @@ import { basename } from "node:path";
 import {
   MAX_UPLOAD_BYTES,
   UPLOAD_TOO_LARGE,
+  type Items,
   type OutboxEntry,
   type Recipient,
   type SendResult,
@@ -29,7 +30,7 @@ export function sendRoutes(deps: ApiDeps) {
     .get("/recipients", sender, (c) => {
       const query = recipientsQuery.parse(c.req.query());
       const items = listRecipients(readContext(deps, c.get("principal")), query);
-      return c.json({ items: items satisfies Recipient[] });
+      return c.json({ items } satisfies Items<Recipient>);
     })
     .post("/send", sender, async (c) => {
       const { to, message } = await readSendRequest(c);

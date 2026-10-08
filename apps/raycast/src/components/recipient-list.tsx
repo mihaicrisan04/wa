@@ -22,7 +22,8 @@ const KIND_ICONS: Record<ChatKind, Icon> = {
 
 async function loadRecipients(query: string) {
   const client = await engineClient();
-  return client.recipients({ q: query.trim() || undefined, limit: LIMIT });
+  const { items } = await client.recipients({ q: query.trim() || undefined, limit: LIMIT });
+  return items;
 }
 
 /** Contacts and groups by recency; sends `content` when given, else whatever is on the clipboard. */

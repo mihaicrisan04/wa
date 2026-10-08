@@ -33,16 +33,14 @@ export const readMessagesTool = defineTool({
       limit: args.limit,
     });
     const lines = [`chat ${chatRef(chat.jid, chat.name)}, oldest first:`];
-    lines.push(
-      ...(page.messages.length ? page.messages.map((m) => messageLine(m)) : ["no messages"]),
-    );
+    lines.push(...(page.items.length ? page.items.map((m) => messageLine(m)) : ["no messages"]));
     if (page.older) lines.push(`older messages: before ${quote(page.older)}`);
     if (page.newer) lines.push(`newer messages: after ${quote(page.newer)}`);
     return {
       lines,
-      structured: { chat, ...page },
+      structured: { chat, messages: page.items, older: page.older, newer: page.newer },
       chat: chat.jid,
-      count: page.messages.length,
+      count: page.items.length,
     };
   },
 });

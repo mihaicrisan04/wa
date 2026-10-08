@@ -104,7 +104,7 @@ A request is made by a **principal**: the admin (anything on the unix socket) or
 
 ## HTTP API
 
-JSON over `http://127.0.0.1:7373`, `Authorization: Bearer <token>`. Errors are `{ "error": { "code", "message" } }`. `@wa/sdk` has a typed client for all of it.
+JSON over `http://127.0.0.1:7373`, `Authorization: Bearer <token>`. Errors are `{ "error": { "code", "message" } }`. Every list is `{ "items": [...] }`; paged lists add their cursors next to `items`: `nextCursor` (pass back as `cursor`) for chats, search and the audit log, `older`/`newer` (pass as `before`/`after`) for a chat's messages. `@wa/sdk` has a typed client for all of it, and returns these bodies as they are.
 
 | route                                                    | capability              |
 | -------------------------------------------------------- | ----------------------- |

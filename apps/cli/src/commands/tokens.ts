@@ -10,16 +10,16 @@ export const tokens = defineGroup({
       usage: "wa tokens ls [--profile p] [--json]",
       options: { profile: { type: "string" }, json: { type: "boolean" } },
       async run({ values }, io) {
-        const list = await engineClient(io.env).admin.tokens.list(values.profile);
+        const listed = await engineClient(io.env).admin.tokens.list(values.profile);
         if (values.json) {
-          io.out(json(list));
+          io.out(json(listed));
           return 0;
         }
-        if (!list.length) {
+        if (!listed.items.length) {
           io.out("no tokens");
           return 0;
         }
-        const rows = list.map((token) => [
+        const rows = listed.items.map((token) => [
           token.id,
           token.profile,
           token.revokedAt ? `revoked ${time(token.revokedAt)}` : "active",

@@ -76,7 +76,7 @@ export function listMessages(
     return more ? encodeCursor(positionOf(row)) : null;
   };
   return {
-    messages: rows.map(toMessage),
+    items: rows.map(toMessage),
     older: cursorBeyond("<", rows.at(0)),
     newer: cursorBeyond(">", rows.at(-1)),
   };

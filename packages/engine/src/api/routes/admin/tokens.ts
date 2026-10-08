@@ -1,4 +1,4 @@
-import type { CreatedToken, TokenInfo } from "@wa/sdk";
+import type { CreatedToken, Items, TokenInfo } from "@wa/sdk";
 import { Hono } from "hono";
 import { z } from "zod";
 import { issueToken } from "../../../tokens";
@@ -16,7 +16,8 @@ export function tokenRoutes({ store }: ApiDeps) {
   return new Hono<AppEnv>()
     .get("/tokens", (c) => {
       const { profile } = listQuery.parse(c.req.query());
-      return c.json({ items: store.tokens.list(profile).map(toTokenInfo) satisfies TokenInfo[] });
+      const items = store.tokens.list(profile).map(toTokenInfo);
+      return c.json({ items } satisfies Items<TokenInfo>);
     })
     .post("/tokens", async (c) => {
       const body = await jsonBody(c, createBody);

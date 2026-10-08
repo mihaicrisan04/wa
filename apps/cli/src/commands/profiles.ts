@@ -16,12 +16,12 @@ export const profiles = defineGroup({
       usage: "wa profiles ls [--json]",
       options: { json: { type: "boolean" } },
       async run({ values }, io) {
-        const list = await engineClient(io.env).admin.profiles.list();
+        const listed = await engineClient(io.env).admin.profiles.list();
         if (values.json) {
-          io.out(json(list));
+          io.out(json(listed));
           return 0;
         }
-        const rows = list.map((profile) => [
+        const rows = listed.items.map((profile) => [
           profile.builtin ? `${profile.name} (built-in)` : profile.name,
           profile.allChats
             ? "all chats"

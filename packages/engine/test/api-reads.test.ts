@@ -1,13 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import type {
-  ChatDetail,
-  Message,
-  MessageContext,
-  MessagePage,
-  Page,
-  SearchHit,
-  Status,
-} from "@wa/sdk";
+import type { ChatDetail, MessageContext, MessagePage, Page, SearchHit, Status } from "@wa/sdk";
 import {
   ANA_PN,
   BOB_PN,
@@ -133,7 +125,7 @@ describe("chats", () => {
 });
 
 describe("messages", () => {
-  const ids = (page: { messages: Message[] }) => page.messages.map((message) => message.id);
+  const ids = (page: MessagePage) => page.items.map((message) => message.id);
 
   test("the latest page comes oldest first, with cursors both ways", async () => {
     const latest = await get<MessagePage>(`/v1/chats/${enc(PAGED_CHAT)}/messages?limit=3`);
@@ -171,7 +163,7 @@ describe("messages", () => {
     const text = await response.text();
     expect(text).not.toContain('"raw"');
     const page = JSON.parse(text) as MessagePage;
-    expect(page.messages[0]).toMatchObject({
+    expect(page.items[0]).toMatchObject({
       id: MASTER_TEXT_ID,
       sender: ANA_PN,
       senderName: "Ana Master",

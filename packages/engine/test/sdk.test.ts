@@ -37,7 +37,7 @@ describe("@wa/sdk against a live engine", () => {
     expect((await wa.chats({ kind: "group" })).items.map((chat) => chat.jid)).toContain(MASTER);
     expect((await wa.chat("Master PP")).participants).toHaveLength(2);
     const page = await wa.messages(MASTER, { limit: 1, around: MASTER_TEXT_ID });
-    expect(page.messages.map((message) => message.id)).toEqual([MASTER_TEXT_ID]);
+    expect(page.items.map((message) => message.id)).toEqual([MASTER_TEXT_ID]);
     expect((await wa.message(MASTER, MASTER_TEXT_ID, { context: 1 })).after).toHaveLength(1);
     expect((await wa.search({ q: "sarcina" })).items[0]?.message.id).toBe(MASTER_TEXT_ID);
     expect(await wa.media(MASTER, MASTER_IMAGE_ID)).toMatchObject({ kind: "image" });
@@ -53,9 +53,9 @@ describe("@wa/sdk against a live engine", () => {
   });
 
   test("recipients, send, sendFile and outbox", async () => {
-    expect((await wa.recipients({ q: "master" })).map((recipient) => recipient.jid)).toContain(
-      MASTER,
-    );
+    expect(
+      (await wa.recipients({ q: "master" })).items.map((recipient) => recipient.jid),
+    ).toContain(MASTER);
     const text = await wa.send({ to: "self", text: "hi" });
     const file = await wa.sendFile({
       to: "self",
@@ -93,7 +93,7 @@ describe("@wa/sdk against a live engine", () => {
     expect(created.chats).toEqual([]);
     expect((await admin.admin.collections.addChats("sdk", [MASTER])).chatCount).toBe(1);
     expect((await admin.admin.collections.removeChat("sdk", MASTER)).chatCount).toBe(0);
-    expect((await admin.admin.collections.list()).map((c) => c.name)).toContain("sdk");
+    expect((await admin.admin.collections.list()).items.map((c) => c.name)).toContain("sdk");
     expect((await admin.admin.collections.get("sdk")).description).toBe("x");
 
     await admin.admin.profiles.create({
@@ -101,9 +101,9 @@ describe("@wa/sdk against a live engine", () => {
       capabilities: ["chats:read"],
       collections: ["sdk"],
     });
-    expect((await admin.admin.profiles.list()).map((p) => p.name)).toContain("sdk");
+    expect((await admin.admin.profiles.list()).items.map((p) => p.name)).toContain("sdk");
     const token = await admin.admin.tokens.create({ profile: "sdk", label: "test" });
-    expect((await admin.admin.tokens.list("sdk")).map((t) => t.id)).toEqual([token.id]);
+    expect((await admin.admin.tokens.list("sdk")).items.map((t) => t.id)).toEqual([token.id]);
     expect((await admin.admin.tokens.revoke(token.id)).revokedAt).toBeNumber();
     expect((await admin.admin.audit({ limit: 3 })).items[0]?.action).toBe("token.revoke");
 

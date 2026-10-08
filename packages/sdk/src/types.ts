@@ -169,8 +169,12 @@ export interface ChatDetail extends Chat {
   participants: Participant[];
 }
 
-export interface Page<T> {
+/** What every list endpoint returns; paged lists add their cursors to it. */
+export interface Items<T> {
   items: T[];
+}
+
+export interface Page<T> extends Items<T> {
   /** Pass back as `cursor` for the next page; null on the last one. */
   nextCursor: string | null;
 }
@@ -205,9 +209,8 @@ export interface Message {
   viewOnce: boolean;
 }
 
-export interface MessagePage {
-  /** Oldest first. */
-  messages: Message[];
+/** `items` are oldest first. */
+export interface MessagePage extends Items<Message> {
   /** Pass as `before` for older messages; null when there are none. */
   older: string | null;
   /** Pass as `after` for newer messages; null when there are none. */
