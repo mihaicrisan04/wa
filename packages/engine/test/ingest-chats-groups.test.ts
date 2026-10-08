@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { ADMIN } from "../src/policy";
+import { chatNames, type ReadContext } from "../src/queries";
 import { ANA_PN, BOB_LID, BOB_PN, buildChat, EVE_PN, GROUP, historySet } from "../src/testing";
 import { harness, type Harness } from "./support/harness";
 
@@ -98,6 +100,41 @@ describe("chats", () => {
       ephemeral_expiration: 604_800,
       unread_count: -1,
     });
+  });
+});
+
+describe("contact names", () => {
+  // what WhatsApp syncs as the full name of people not saved in the phone
+  const MASKED = "+40\u2219\u2219\u2219\u2219\u2219\u2219\u221950";
+  const displayName = () =>
+    chatNames({ store: h.store, principal: ADMIN } as ReadContext, [ANA_PN]).get(ANA_PN);
+
+  test("a masked phone number as the name falls back to the push name", async () => {
+    await h.emit({
+      "chats.upsert": [{ id: ANA_PN, name: MASKED }],
+      "contacts.upsert": [{ id: ANA_PN, name: MASKED, notify: "Ana Pop" }],
+    });
+    expect(h.store.contacts.get(ANA_PN)?.name).toBeNull();
+    expect(h.store.chats.get(ANA_PN)?.name).toBeNull();
+    expect(displayName()).toBe("Ana Pop");
+  });
+
+  test("a saved name still wins over the push name", async () => {
+    await h.emit({
+      "chats.upsert": [{ id: ANA_PN }],
+      "contacts.upsert": [{ id: ANA_PN, name: "Ana from work", notify: "Ana Pop" }],
+    });
+    await h.emit({ "contacts.upsert": [{ id: ANA_PN, name: MASKED }] });
+    expect(displayName()).toBe("Ana from work");
+  });
+
+  test("history chats skip a masked name for the display name", async () => {
+    await h.emit({
+      "messaging-history.set": historySet({
+        chats: [buildChat({ id: ANA_PN, name: MASKED, displayName: "Ana Pop" })],
+      }),
+    });
+    expect(h.store.chats.get(ANA_PN)?.name).toBe("Ana Pop");
   });
 });
 
