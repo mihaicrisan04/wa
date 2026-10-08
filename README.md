@@ -56,4 +56,4 @@ wa uses [Baileys](https://github.com/WhiskeySockets/Baileys), an unofficial What
 
 ## License
 
-[MIT](LICENSE)
+The source is [MIT](LICENSE). The compiled `dist/wa` bundles Baileys' `libsignal` dependency, which is GPL-3.0, so a built binary may only be passed on under GPL-3.0 terms. There are no binary releases; build it from source.
