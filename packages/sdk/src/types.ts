@@ -49,6 +49,7 @@ export interface Status {
   state: ConnectionState;
   needsLink: boolean;
   me: { jid: string; lid: string | null } | null;
+  /** `at` is unix seconds, like every other timestamp. */
   lastDisconnect: { code: number | null; at: number } | null;
   history: HistorySync;
   /** Only what the caller can see. */

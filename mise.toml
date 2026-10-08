@@ -17,6 +17,7 @@ run = [
   "tsc --noEmit -p packages/engine",
   "tsc --noEmit -p apps/cli",
   "tsc --noEmit -p apps/raycast",
+  "tsc --noEmit -p apps/raycast/test",
 ]
 
 [tasks.lint]

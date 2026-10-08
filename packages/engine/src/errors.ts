@@ -1,6 +1,6 @@
 import type { ChatCandidate } from "@wa/sdk";
 
-export type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 503;
+export type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 413 | 503;
 
 /** An error whose code and message are safe to show to the client that caused it. */
 export class ApiError extends Error {
@@ -29,4 +29,8 @@ export function ambiguous(input: string, candidates: ChatCandidate[]): ApiError 
 
 export function notLinked(): ApiError {
   return new ApiError(409, "not_linked", "WhatsApp is not linked yet");
+}
+
+export function tooLarge(message: string): ApiError {
+  return new ApiError(413, "too_large", message);
 }

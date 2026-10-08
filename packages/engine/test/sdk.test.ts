@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { Readable } from "node:stream";
-import { createWaClient, WaApiError, type WaClient } from "@wa/sdk";
+import { createWaClient, MAX_UPLOAD_BYTES, WaApiError, type WaClient } from "@wa/sdk";
 import { raycastTokenPath } from "../src/access";
 import { startApi, type ApiHarness } from "./support/api";
 import { ME_PN } from "./support/jids";
@@ -69,6 +69,25 @@ describe("@wa/sdk against a live engine", () => {
     expect((await wa.outbox(text.outboxId)).status).toBe("sent");
     expect((await wa.outbox(file.outboxId)).status).toBe("sent");
     expect(api.client().sent.at(-1)?.content).toMatchObject({ fileName: "hello.txt" });
+  });
+
+  test("a file bigger than Bun's 128 MB default body limit still uploads", async () => {
+    const size = 129 * 1024 * 1024;
+    const result = await wa.sendFile({
+      to: "self",
+      file: new Blob([new Uint8Array(size)]),
+      fileName: "big.bin",
+    });
+    expect(result.status).toBe("queued");
+    await api.engine.outbox.idle();
+  });
+
+  test("files over WhatsApp's 2 GB cap are refused before uploading", async () => {
+    const huge = { size: MAX_UPLOAD_BYTES + 1 } as Blob;
+    const error = await wa
+      .sendFile({ to: "self", file: huge, fileName: "huge.bin" })
+      .catch((err: unknown) => err);
+    expect(error).toMatchObject({ status: 413, code: "too_large" });
   });
 
   test("admin over the socket", async () => {

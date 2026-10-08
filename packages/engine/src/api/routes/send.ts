@@ -1,8 +1,8 @@
 import { basename } from "node:path";
-import type { OutboxEntry, Recipient, SendResult } from "@wa/sdk";
+import { MAX_UPLOAD_BYTES, type OutboxEntry, type Recipient, type SendResult } from "@wa/sdk";
 import { Hono } from "hono";
 import { z } from "zod";
-import { invalid, notFound } from "../../errors";
+import { invalid, notFound, tooLarge } from "../../errors";
 import type { OutgoingMessage } from "../../outbox";
 import { actorOf, assertCan, type Principal } from "../../policy";
 import { inScope, listRecipients, sendTarget, type ReadContext } from "../../queries";
@@ -71,6 +71,7 @@ async function readSendRequest(c: AppContext): Promise<{ to: string; message: Ou
   const file = form.get("file");
   if (!(file instanceof File) || file.size === 0)
     throw invalid("file: an uploaded file is required");
+  if (file.size > MAX_UPLOAD_BYTES) throw tooLarge("WhatsApp only takes files up to 2 GB");
   return {
     to: fields.to,
     message: {

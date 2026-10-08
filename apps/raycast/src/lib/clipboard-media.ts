@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { CLIPBOARD_DIR, CLIPBOARD_TTL_MS, pruneStaleFiles } from "./temp-files";
 
 export type ClipboardContent =
   | { type: "text"; text: string }
@@ -15,8 +15,11 @@ export type ClipboardContent =
  * Handles public.png, public.tiff, and other NSImage-compatible pasteboard types.
  */
 function saveClipboardImage(): string | null {
-  const tempPath = join(tmpdir(), `whatsapp-clipboard-${Date.now()}.png`);
+  // whatever a closed or crashed command left behind
+  void pruneStaleFiles(CLIPBOARD_DIR, CLIPBOARD_TTL_MS);
+  const tempPath = join(CLIPBOARD_DIR, `${Date.now()}.png`);
   try {
+    mkdirSync(CLIPBOARD_DIR, { recursive: true, mode: 0o700 });
     const result = execSync(
       `swift -e '
 import AppKit
@@ -58,11 +61,19 @@ function fileUrlToPath(fileUrl: string): string {
   return fileUrl;
 }
 
-export function readClipboard(text?: string, file?: string): ClipboardContent {
+/**
+ * `pasteboardImage: false` for clipboard history entries: the image fallback reads the live
+ * pasteboard, which belongs to the current entry only.
+ */
+export function readClipboard(
+  text?: string,
+  file?: string,
+  { pasteboardImage = true }: { pasteboardImage?: boolean } = {},
+): ClipboardContent {
   // if text looks like clipboard metadata (e.g. Shottr's "Image (1688x1085)"),
   // extract the actual image via Swift before checking the file field —
-  // Shottr puts a temp file with no extension which the daemon can't type-detect
-  if (text && looksLikeClipboardMeta(text)) {
+  // Shottr puts a temp file with no extension which the engine can't type-detect
+  if (pasteboardImage && text && looksLikeClipboardMeta(text)) {
     const imagePath = saveClipboardImage();
     if (imagePath) {
       return { type: "image", filePath: imagePath };
@@ -79,7 +90,7 @@ export function readClipboard(text?: string, file?: string): ClipboardContent {
 
   // try image extraction if there's no text at all
   if (!text) {
-    const imagePath = saveClipboardImage();
+    const imagePath = pasteboardImage ? saveClipboardImage() : null;
     if (imagePath) {
       return { type: "image", filePath: imagePath };
     }
