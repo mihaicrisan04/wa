@@ -1,3 +1,4 @@
+import type { MediaKind } from "@wa/sdk";
 import { nowSeconds } from "../clock";
 import type { Database } from "./db";
 import type { MediaInfo, MessageKeyRef } from "./messages";
@@ -5,7 +6,7 @@ import type { MediaInfo, MessageKeyRef } from "./messages";
 export interface MediaRow {
   chat_jid: string;
   message_id: string;
-  kind: string;
+  kind: MediaKind;
   mimetype: string | null;
   file_name: string | null;
   size: number | null;

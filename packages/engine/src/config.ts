@@ -1,4 +1,4 @@
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_PORT } from "@wa/sdk";
 import { z } from "zod";
@@ -82,6 +82,11 @@ export function tokensDir(home: string): string {
 
 export function raycastTokenPath(home: string): string {
   return join(tokensDir(home), "raycast.token");
+}
+
+/** Where MCP `download_media` exports files, outside WA_HOME so agents may read them. */
+export function defaultExportDir(): string {
+  return join(tmpdir(), "wa-export");
 }
 
 /** Every file the engine creates is 0600 and every directory 0700. */

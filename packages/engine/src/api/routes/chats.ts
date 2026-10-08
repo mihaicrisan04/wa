@@ -1,41 +1,30 @@
-import { CHAT_KINDS, type ChatDetail, type MessagePage, type Page, type Chat } from "@wa/sdk";
+import type { Chat, ChatDetail, MessagePage, Page } from "@wa/sdk";
 import { Hono } from "hono";
-import { z } from "zod";
-import { assertCan } from "../../policy";
-import { getChat, listChats, listMessages } from "../../queries";
+import {
+  chatListQuery,
+  getChat,
+  listChats,
+  listMessages,
+  messageListQuery,
+  resolveChat,
+} from "../../queries";
+import { requires } from "../auth";
 import { readContext, type ApiDeps, type AppEnv } from "../context";
-import { limitParam, optionalText } from "../params";
-
-const listQuery = z.object({
-  q: optionalText,
-  collection: optionalText,
-  kind: z.enum(CHAT_KINDS).optional(),
-  limit: limitParam(50, 500),
-  cursor: optionalText,
-});
-
-const messagesQuery = z.object({
-  before: optionalText,
-  after: optionalText,
-  around: optionalText,
-  limit: limitParam(50, 200),
-});
 
 export function chatRoutes(deps: ApiDeps) {
   return new Hono<AppEnv>()
-    .get("/chats", (c) => {
-      assertCan(c.get("principal"), "chats:read");
-      const query = listQuery.parse(c.req.query());
-      return c.json(listChats(readContext(c, deps), query) satisfies Page<Chat>);
+    .get("/chats", requires("chats:read"), (c) => {
+      const query = chatListQuery.parse(c.req.query());
+      return c.json(listChats(readContext(deps, c.get("principal")), query) satisfies Page<Chat>);
     })
-    .get("/chats/:chat", (c) => {
-      assertCan(c.get("principal"), "chats:read");
-      return c.json(getChat(readContext(c, deps), c.req.param("chat")) satisfies ChatDetail);
+    .get("/chats/:chat", requires("chats:read"), (c) => {
+      const ctx = readContext(deps, c.get("principal"));
+      return c.json(getChat(ctx, resolveChat(ctx, c.req.param("chat"))) satisfies ChatDetail);
     })
-    .get("/chats/:chat/messages", (c) => {
-      assertCan(c.get("principal"), "messages:read");
-      const query = messagesQuery.parse(c.req.query());
-      const page = listMessages(readContext(c, deps), c.req.param("chat"), query);
+    .get("/chats/:chat/messages", requires("messages:read"), (c) => {
+      const query = messageListQuery.parse(c.req.query());
+      const ctx = readContext(deps, c.get("principal"));
+      const page = listMessages(ctx, resolveChat(ctx, c.req.param("chat")), query);
       return c.json(page satisfies MessagePage);
     });
 }

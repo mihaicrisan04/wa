@@ -8,6 +8,7 @@ import { createApp, type ApiDeps, type App } from "./api/app";
 import { claimSocket, listenOnSocket } from "./api/socket";
 import {
   databasePath,
+  defaultExportDir,
   ENGINE_VERSION,
   restrictFileModes,
   socketPath,
@@ -31,7 +32,7 @@ export interface StartEngineOptions {
   outboxBackoff?: Backoff;
   /** How often disappearing messages past their expiry are purged. */
   purgeIntervalMs?: number;
-  /** Where MCP `download_media` exports files; `$TMPDIR/wa-export` by default. */
+  /** Where MCP `download_media` exports files instead of `$TMPDIR/wa-export`. */
   exportDir?: string;
   /** Replaces Baileys' media downloader (tests must never reach WhatsApp's CDN). */
   mediaDownload?: MediaCacheOptions["download"];
@@ -82,7 +83,8 @@ export async function startEngine(
   const services = createServices(config, options, logger);
   const stopPurging = purgeEvery(options.purgeIntervalMs ?? PURGE_INTERVAL_MS, services, logger);
   const listeners: Listeners = { tcp: null, admin: null };
-  const apps = createApps(config, services, listeners, logger, options.exportDir);
+  const exportDir = options.exportDir ?? defaultExportDir();
+  const apps = createApps(config, services, listeners, logger, exportDir);
 
   const stop = async () => {
     stopPurging();
@@ -174,9 +176,14 @@ function createApps(
   services: Services,
   listeners: Listeners,
   logger: Logger,
-  exportDir: string | undefined,
+  exportDir: string,
 ): Engine["apps"] {
-  const deps: ApiDeps = { ...services, version: ENGINE_VERSION, logger, exportDir };
+  const deps: Omit<ApiDeps, "noTimeout"> = {
+    ...services,
+    version: ENGINE_VERSION,
+    logger,
+    exportDir,
+  };
   return {
     tcp: createApp(
       { ...deps, noTimeout: (request) => listeners.tcp?.timeout(request, 0) },

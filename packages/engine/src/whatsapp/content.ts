@@ -1,17 +1,22 @@
+import type { MediaKind, MessageType } from "@wa/sdk";
 import { getContentType, toNumber, type proto } from "@whiskeysockets/baileys";
 import type { MediaInfo } from "../store";
 
 export type ContentType = keyof proto.IMessage;
 
-const TYPE_NAMES: Partial<Record<ContentType, string>> = {
-  conversation: "text",
-  extendedTextMessage: "text",
+const MEDIA_KIND_OF: Partial<Record<ContentType, MediaKind>> = {
   imageMessage: "image",
   videoMessage: "video",
   ptvMessage: "video",
   audioMessage: "audio",
   documentMessage: "document",
   stickerMessage: "sticker",
+};
+
+const TYPE_NAMES: Partial<Record<ContentType, MessageType>> = {
+  conversation: "text",
+  extendedTextMessage: "text",
+  ...MEDIA_KIND_OF,
   locationMessage: "location",
   liveLocationMessage: "location",
   contactMessage: "contact",
@@ -21,15 +26,6 @@ const TYPE_NAMES: Partial<Record<ContentType, string>> = {
   pollCreationMessageV3: "poll",
   eventMessage: "event",
 };
-
-const MEDIA_TYPES = new Set<ContentType>([
-  "imageMessage",
-  "videoMessage",
-  "ptvMessage",
-  "audioMessage",
-  "documentMessage",
-  "stickerMessage",
-]);
 
 /** Content that only changes or annotates another message; never stored as a row. */
 export const CARRIER_TYPES = new Set<ContentType>([
@@ -86,7 +82,7 @@ export function textOf(content: proto.IMessage | null | undefined): ContentText 
   if (!content || !type) return empty;
   if (type === "conversation") return { ...empty, text: content.conversation || null };
   const body = bodyOf(content, type);
-  if (MEDIA_TYPES.has(type)) {
+  if (MEDIA_KIND_OF[type]) {
     return { text: null, caption: body.caption || null, fileName: body.fileName || null };
   }
   const options = body.options?.map((option) => option.optionName).filter(Boolean) ?? [];
@@ -106,10 +102,11 @@ export function textOf(content: proto.IMessage | null | undefined): ContentText 
 
 export function mediaOf(content: proto.IMessage | null | undefined): MediaInfo | null {
   const type = contentTypeOf(content);
-  if (!content || !type || !MEDIA_TYPES.has(type)) return null;
+  const kind = type && MEDIA_KIND_OF[type];
+  if (!content || !type || !kind) return null;
   const body = bodyOf(content, type);
   return {
-    kind: typeName(type),
+    kind,
     mimetype: body.mimetype || null,
     fileName: body.fileName || null,
     size: body.fileLength == null ? null : toNumber(body.fileLength),
@@ -132,5 +129,5 @@ export function applyEditedText(original: proto.IMessage, edited: proto.IMessage
   if (!type || replacement === null) return;
   if (type === "conversation") original.conversation = replacement;
   else if (type === "extendedTextMessage") bodyOf(original, type).text = replacement;
-  else if (MEDIA_TYPES.has(type)) bodyOf(original, type).caption = replacement;
+  else if (MEDIA_KIND_OF[type]) bodyOf(original, type).caption = replacement;
 }

@@ -1,5 +1,6 @@
 import type { Capability, ProfileCapability } from "@wa/sdk";
-import { ApiError } from "./errors";
+import { forbidden } from "./errors";
+import type { AuditRecord, Store } from "./store";
 
 /** Who is asking: the CLI over the unix socket, or a bearer token bound to a profile. */
 export type Principal =
@@ -22,14 +23,14 @@ export function can(principal: Principal, capability: Capability): boolean {
   return capability !== "admin" && principal.capabilities.has(capability);
 }
 
-/** Passes when the principal holds any one of `capabilities`. */
+/** True when the principal holds any one of `capabilities`, or when none are required. */
+export function canAny(principal: Principal, capabilities: readonly Capability[]): boolean {
+  return !capabilities.length || capabilities.some((capability) => can(principal, capability));
+}
+
 export function assertCan(principal: Principal, ...capabilities: Capability[]): void {
-  if (capabilities.some((capability) => can(principal, capability))) return;
-  throw new ApiError(
-    403,
-    "forbidden",
-    `this token lacks the ${capabilities.join(" or ")} capability`,
-  );
+  if (canAny(principal, capabilities)) return;
+  throw forbidden(`this token lacks the ${capabilities.join(" or ")} capability`);
 }
 
 export type SqlParams = Record<string, string | number | null>;
@@ -82,12 +83,27 @@ export function and(...fragments: SqlFragment[]): SqlFragment {
   };
 }
 
+/** The token profile acting, or null for the admin. */
+export function profileOf(principal: Principal): string | null {
+  return principal.kind === "token" ? principal.profile : null;
+}
+
 /** Who to record in the audit log. */
-export function auditActor(principal: Principal): {
+function auditActor(principal: Principal): {
   tokenId: string | null;
   profile: string | null;
 } {
-  return principal.kind === "admin"
-    ? { tokenId: null, profile: null }
-    : { tokenId: principal.tokenId, profile: principal.profile };
+  return {
+    tokenId: principal.kind === "token" ? principal.tokenId : null,
+    profile: profileOf(principal),
+  };
+}
+
+export function recordAudit(
+  store: Store,
+  principal: Principal,
+  action: string,
+  about: Pick<AuditRecord, "chatJid" | "detail"> = {},
+): void {
+  store.audit.record({ ...auditActor(principal), action, ...about });
 }

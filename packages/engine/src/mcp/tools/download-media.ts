@@ -2,10 +2,10 @@ import { copyFile, mkdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { z } from "zod";
 import { mediaUnavailable } from "../../errors";
-import { findMedia } from "../../queries";
+import { findMedia, requiredText, resolveChat } from "../../queries";
 import type { CachedMedia } from "../../whatsapp/media";
 import { byteSize, chatRef, quote } from "../format";
-import { chatInput } from "../schemas";
+import { chatInput, mediaSchema } from "../schemas";
 import { defineTool, type ToolEnv } from "../tool";
 
 /** Larger images, and any other media, are copied out instead of inlined. */
@@ -17,19 +17,15 @@ export const downloadMediaTool = defineTool({
   description:
     "Fetches a message's media. Images up to 1 MB come back inline; anything else is copied to a temporary file whose path is returned.",
   requires: ["media:read"],
-  input: z.object({ chat: chatInput, message_id: z.string().trim().min(1) }),
-  output: z.object({
-    chat: z.string(),
-    id: z.string(),
-    kind: z.string(),
-    mimetype: z.string().nullable(),
-    fileName: z.string().nullable(),
+  input: z.object({ chat: chatInput, message_id: requiredText }),
+  output: mediaSchema.omit({ downloaded: true }).extend({
     size: z.number(),
     inline: z.boolean(),
     path: z.string().nullable().describe("the exported copy, when not inline"),
   }),
   async run({ chat: ref, message_id }, env) {
-    const row = findMedia(env.read(), ref, message_id);
+    const ctx = env.read();
+    const row = findMedia(ctx, resolveChat(ctx, ref), message_id);
     const media = await env.deps.media
       .get({ chatJid: row.chat_jid, id: row.message_id })
       .catch(mediaUnavailable);
@@ -47,12 +43,13 @@ export const downloadMediaTool = defineTool({
       size: media.size,
     };
 
-    if (isInlineImage(media)) {
+    const inlineType = inlineImageType(media);
+    if (inlineType) {
       const data = (await readFile(media.path)).toString("base64");
       return {
         lines: [...about, "the image follows inline"],
         structured: { ...structured, inline: true, path: null },
-        attachments: [{ type: "image", data, mimeType: media.mimetype! }],
+        attachments: [{ type: "image", data, mimeType: inlineType }],
         chat: row.chat_jid,
       };
     }
@@ -65,13 +62,14 @@ export const downloadMediaTool = defineTool({
   },
 });
 
-function isInlineImage(media: CachedMedia): boolean {
-  return media.mimetype?.startsWith("image/") === true && media.size <= INLINE_IMAGE_MAX_BYTES;
+/** The image's mimetype when it is small enough to return inline, else null. */
+function inlineImageType({ mimetype, size }: CachedMedia): string | null {
+  return mimetype?.startsWith("image/") && size <= INLINE_IMAGE_MAX_BYTES ? mimetype : null;
 }
 
 /** `<exportDir>/<profile>/<hash>.<ext>`: the cache's own hashed name, never the cache path. */
 async function exportCopy(env: ToolEnv, media: CachedMedia): Promise<string> {
-  const dir = join(env.exportDir, env.principal.profile);
+  const dir = join(env.deps.exportDir, env.principal.profile);
   await mkdir(dir, { recursive: true, mode: 0o700 });
   const path = join(dir, basename(media.path));
   await copyFile(media.path, path);

@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { chatName, listMessages, resolveChat } from "../../queries";
+import { chatRefOf, limitParam, listMessages, requiredText } from "../../queries";
 import { chatRef, messageLine, quote } from "../format";
-import { chatInput, chatRefSchema, limitInput, messageSchema, timeInput } from "../schemas";
+import { chatInput, chatRefSchema, messageSchema, timeInput } from "../schemas";
 import { defineTool } from "../tool";
 
 export const readMessagesTool = defineTool({
@@ -14,8 +14,8 @@ export const readMessagesTool = defineTool({
     chat: chatInput,
     before: timeInput.optional().describe("older than this: unix seconds, an ISO date or a cursor"),
     after: timeInput.optional().describe("newer than this: unix seconds, an ISO date or a cursor"),
-    around_message_id: z.string().trim().min(1).optional().describe("center on this message"),
-    limit: limitInput(50, 200),
+    around_message_id: requiredText.optional().describe("center on this message"),
+    limit: limitParam(50, 200),
   }),
   output: z.object({
     chat: chatRefSchema,
@@ -25,15 +25,14 @@ export const readMessagesTool = defineTool({
   }),
   run(args, env) {
     const ctx = env.read();
-    const jid = resolveChat(ctx, args.chat);
-    const page = listMessages(ctx, jid, {
+    const chat = chatRefOf(ctx, args.chat);
+    const page = listMessages(ctx, chat.jid, {
       before: args.before,
       after: args.after,
       around: args.around_message_id,
       limit: args.limit,
     });
-    const chat = { jid, name: chatName(ctx, jid) };
-    const lines = [`chat ${chatRef(jid, chat.name)}, oldest first:`];
+    const lines = [`chat ${chatRef(chat.jid, chat.name)}, oldest first:`];
     lines.push(
       ...(page.messages.length ? page.messages.map((m) => messageLine(m)) : ["no messages"]),
     );
@@ -42,7 +41,7 @@ export const readMessagesTool = defineTool({
     return {
       lines,
       structured: { chat, ...page },
-      chat: jid,
+      chat: chat.jid,
       count: page.messages.length,
     };
   },

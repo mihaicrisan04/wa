@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Status } from "@wa/sdk";
 import { proto } from "@whiskeysockets/baileys";
-import { HISTORY_STALL_SECONDS, readHistorySync } from "../src/queries";
+import { HISTORY_STALL_SECONDS, readHistorySync } from "../src/queries/history";
 import { openStore, type HistoryPhaseState, type HistoryPhases, type Store } from "../src/store";
 import { historySet } from "../src/testing";
 import { json, startApi } from "./support/api";

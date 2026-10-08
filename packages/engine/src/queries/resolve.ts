@@ -2,7 +2,7 @@ import type { ChatCandidate } from "@wa/sdk";
 import { jidDecode } from "@whiskeysockets/baileys";
 import { ambiguous, notFound } from "../errors";
 import { scopeSql, seesAllChats, TRUE, type SqlFragment, type SqlParams } from "../policy";
-import { CHAT_NAME, likePattern, type ReadContext } from "./rows";
+import { CHAT_NAME, contactName, likePattern, RECENCY, type ReadContext } from "./rows";
 
 const PHONE = /^\+?[\d\s().-]+$/;
 const MIN_PHONE_DIGITS = 5;
@@ -41,11 +41,7 @@ export function visibleChat(ctx: ReadContext, jid: string): boolean {
   );
 }
 
-/**
- * A chat reference as users type it: a jid, a phone number, or a name. Names match only among
- * visible chats (exact before partial), so candidates never come from outside the scope.
- * `stored: false` accepts a jid or number of a chat that does not exist yet (sending, admin).
- */
+/** A jid, number or name of a visible chat; `stored: false` also takes unstored jids. */
 export function resolveChat(
   ctx: ReadContext,
   ref: string,
@@ -64,7 +60,7 @@ export function resolveChat(
         `SELECT ch.jid, ${CHAT_NAME} AS name, ch.kind
          FROM chats AS ch LEFT JOIN contacts AS ct ON ct.jid = ch.jid
          WHERE ${CHAT_NAME} LIKE $pattern ESCAPE '\\' AND (${scope.sql})
-         ORDER BY coalesce(ch.last_message_at, 0) DESC, ch.jid`,
+         ORDER BY ${RECENCY} DESC, ch.jid`,
       )
       .all({ ...scope.params, pattern }),
   );
@@ -78,9 +74,9 @@ export function resolveSender(ctx: ReadContext, ref: string): string {
   return pickByName(ref, "sender", (pattern) =>
     ctx.store.db
       .query<ChatCandidate, SqlParams>(
-        `SELECT ct.jid, coalesce(ct.name, ct.verified_name, ct.push_name) AS name, 'dm' AS kind
+        `SELECT ct.jid, ${contactName("ct")} AS name, 'dm' AS kind
          FROM contacts AS ct
-         WHERE coalesce(ct.name, ct.verified_name, ct.push_name) LIKE $pattern ESCAPE '\\'
+         WHERE ${contactName("ct")} LIKE $pattern ESCAPE '\\'
            AND (${visible.sql})
          ORDER BY ct.jid`,
       )
@@ -102,6 +98,7 @@ function visiblePeople(ctx: ReadContext): SqlFragment {
   };
 }
 
+/** Names match exact before partial, and only among what `search` lets the caller see. */
 function pickByName(
   input: string,
   what: "chat" | "sender",
@@ -112,7 +109,8 @@ function pickByName(
   const matches = search(likePattern(name));
   const exact = matches.filter((match) => match.name?.toLowerCase() === name.toLowerCase());
   const candidates = exact.length ? exact : matches;
-  if (candidates.length === 1) return candidates[0]!.jid;
-  if (!candidates.length) throw notFound(`${what} not found`);
-  throw ambiguous(name, candidates.slice(0, MAX_CANDIDATES));
+  if (candidates.length > 1) throw ambiguous(name, candidates.slice(0, MAX_CANDIDATES));
+  const [match] = candidates;
+  if (!match) throw notFound(`${what} not found`);
+  return match.jid;
 }

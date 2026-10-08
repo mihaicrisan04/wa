@@ -71,15 +71,6 @@ export class CollectionsRepo {
       .run({ from, to });
     this.db.query("DELETE FROM collection_chats WHERE chat_jid = $from").run({ from });
   }
-
-  chats(name: string): string[] {
-    return this.db
-      .query<{ chat_jid: string }, { name: string }>(
-        "SELECT chat_jid FROM collection_chats WHERE collection = $name ORDER BY chat_jid",
-      )
-      .all({ name })
-      .map((row) => row.chat_jid);
-  }
 }
 
 export interface ProfileSpec {
@@ -117,18 +108,19 @@ export class ProfilesRepo {
     return row ? this.toRecord(row) : null;
   }
 
-  /** False when it already exists; every collection must exist (foreign key). */
-  create(spec: ProfileSpec): boolean {
+  /** Null when it already exists; every collection must exist (foreign key). */
+  create(spec: ProfileSpec): ProfileRecord | null {
     return this.db.transaction(() => {
-      const created =
-        this.db
-          .query(
-            `INSERT INTO profiles (name, capabilities, all_chats, created_at)
-             VALUES ($name, $capabilities, $allChats, $now) ON CONFLICT (name) DO NOTHING`,
-          )
-          .run({ ...profileParams(spec), now: nowSeconds() }).changes > 0;
-      if (created) this.setCollections(spec.name, spec.collections);
-      return created;
+      const row = this.db
+        .query<ProfileRow, Record<string, string | number>>(
+          `INSERT INTO profiles (name, capabilities, all_chats, created_at)
+           VALUES ($name, $capabilities, $allChats, $now) ON CONFLICT (name) DO NOTHING
+           RETURNING *`,
+        )
+        .get({ ...profileParams(spec), now: nowSeconds() });
+      if (!row) return null;
+      this.setCollections(spec.name, spec.collections);
+      return this.toRecord(row);
     })();
   }
 
@@ -240,12 +232,14 @@ export class TokensRepo {
       .all({ profile: profile ?? null });
   }
 
-  revoke(id: string): boolean {
-    return (
-      this.db
-        .query("UPDATE tokens SET revoked_at = $now WHERE id = $id AND revoked_at IS NULL")
-        .run({ id, now: nowSeconds() }).changes > 0
-    );
+  /** The token as revoked now; null when it doesn't exist or was revoked before. */
+  revoke(id: string): TokenRow | null {
+    return this.db
+      .query<TokenRow, { id: string; now: number }>(
+        `UPDATE tokens SET revoked_at = $now WHERE id = $id AND revoked_at IS NULL
+         RETURNING ${TOKEN_COLUMNS}`,
+      )
+      .get({ id, now: nowSeconds() });
   }
 
   /** Minute resolution is plenty and spares a write on every request. */

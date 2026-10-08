@@ -1,10 +1,6 @@
 import type { Chat, ChatCandidate, Message } from "@wa/sdk";
 
-/**
- * Tool output an agent reads. Everything a WhatsApp user controls (names, text, captions, file
- * names, ids) is JSON-quoted, so a newline or a fake `[ts] "x": "y"` header inside it stays inside
- * one string, and the fence lines that frame the data are removed from it.
- */
+// whatever a WhatsApp user controls is JSON-quoted and fence-free, so it can't fake a line
 export const FENCE_OPEN = "<<<wa:untrusted-whatsapp-data>>>";
 export const FENCE_CLOSE = "<<<wa:end-untrusted-whatsapp-data>>>";
 const FENCE_MARK = "<<<wa:";
@@ -31,9 +27,12 @@ export function quote(value: string | null | undefined): string {
 }
 
 /** Seconds to `2026-10-07T09:30:00Z`. */
-export function isoTime(unixSeconds: number | null | undefined): string {
-  if (!unixSeconds) return "never";
+export function isoTime(unixSeconds: number): string {
   return new Date(unixSeconds * 1000).toISOString().replace(".000Z", "Z");
+}
+
+export function isoTimeOrNever(unixSeconds: number | null): string {
+  return unixSeconds ? isoTime(unixSeconds) : "never";
 }
 
 /** Message types and chat kinds come from the engine, but are checked rather than trusted. */
@@ -51,9 +50,9 @@ export function chatRef(jid: string, name: string | null): string {
   return name ? `${quote(name)} (${jidText(jid)})` : jidText(jid);
 }
 
-function senderOf(message: Message): string {
-  if (message.fromMe) return "me";
-  return quote(message.senderName ?? message.sender ?? "unknown");
+export function senderLabel(from: Pick<Message, "fromMe" | "sender" | "senderName">): string {
+  if (from.fromMe) return "me";
+  return quote(from.senderName ?? from.sender ?? "unknown");
 }
 
 /** `[<iso ts>] <sender>: <text>`, then the details as `key value` pairs. */
@@ -71,11 +70,11 @@ export function messageLine(message: Message, extra: string[] = []): string {
   if (message.viewOnce) details.push("view once");
   if (message.editedAt) details.push("edited");
   if (message.deletedAt !== null) details.push("deleted");
-  return `[${isoTime(message.ts)}] ${senderOf(message)}: ${quote(body)} · ${details.join(" · ")}`;
+  return `[${isoTime(message.ts)}] ${senderLabel(message)}: ${quote(body)} · ${details.join(" · ")}`;
 }
 
 export function chatLine(chat: Chat): string {
-  const details = [word(chat.kind), `last message ${isoTime(chat.lastMessageAt)}`];
+  const details = [word(chat.kind), `last message ${isoTimeOrNever(chat.lastMessageAt)}`];
   if (chat.unreadCount > 0) details.push(`${chat.unreadCount} unread`);
   if (chat.archived) details.push("archived");
   return `${chatRef(chat.jid, chat.name)} · ${details.join(" · ")}`;

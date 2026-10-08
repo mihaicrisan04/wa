@@ -3,10 +3,11 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { issueToken } from "../../../tokens";
 import { notFound } from "../../../errors";
-import { ADMIN, auditActor } from "../../../policy";
+import { recordAudit } from "../../../policy";
+import { optionalText } from "../../../queries";
 import type { TokenRow } from "../../../store";
 import type { ApiDeps, AppEnv } from "../../context";
-import { jsonBody, nameParam, optionalText } from "../../params";
+import { jsonBody, nameParam } from "../../params";
 
 const createBody = z.object({ profile: nameParam, label: z.string().trim().max(200).optional() });
 const listQuery = z.object({ profile: optionalText });
@@ -21,25 +22,19 @@ export function tokenRoutes({ store }: ApiDeps) {
       const body = await jsonBody(c, createBody);
       if (!store.profiles.get(body.profile)) throw notFound("profile not found");
       const { row, token } = issueToken(store, body.profile, body.label || null);
-      store.audit.record({
-        ...auditActor(ADMIN),
-        action: "token.create",
+      recordAudit(store, c.get("principal"), "token.create", {
         detail: { profile: body.profile, tokenId: row.id },
       });
       return c.json({ ...toTokenInfo(row), token } satisfies CreatedToken, 201);
     })
     .delete("/tokens/:id", (c) => {
       const id = c.req.param("id");
-      const row = store.tokens.get(id);
+      const revoked = store.tokens.revoke(id);
+      if (revoked)
+        recordAudit(store, c.get("principal"), "token.revoke", { detail: { tokenId: id } });
+      const row = revoked ?? store.tokens.get(id);
       if (!row) throw notFound("token not found");
-      if (store.tokens.revoke(id)) {
-        store.audit.record({
-          ...auditActor(ADMIN),
-          action: "token.revoke",
-          detail: { tokenId: id },
-        });
-      }
-      return c.json(toTokenInfo(store.tokens.get(id)!));
+      return c.json(toTokenInfo(row));
     });
 }
 

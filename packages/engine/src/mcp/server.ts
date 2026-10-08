@@ -1,31 +1,15 @@
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { createMcpHandler, McpServer, type AuthInfo } from "@modelcontextprotocol/server";
 import type { Handler } from "hono";
-import type { ApiDeps, AppEnv } from "../api/context";
-import { Identity } from "../whatsapp/identity";
+import { readContext, type ApiDeps, type AppEnv } from "../api/context";
 import { can, type TokenPrincipal } from "../policy";
 import { FENCE_CLOSE, FENCE_OPEN } from "./format";
 import { describeScope, visibleScope } from "./scope";
 import type { ToolEnv } from "./tool";
 import { TOOLS } from "./tools";
 
-function defaultExportDir(): string {
-  return join(tmpdir(), "wa-export");
-}
-
 /** A fresh server for one request, holding only the tools the principal's capabilities allow. */
 function buildServerFor(principal: TokenPrincipal, deps: ApiDeps): McpServer {
-  const env: ToolEnv = {
-    deps,
-    principal,
-    read: () => ({
-      store: deps.store,
-      principal,
-      identity: new Identity(deps.store, deps.connection.me()),
-    }),
-    exportDir: deps.exportDir ?? defaultExportDir(),
-  };
+  const env: ToolEnv = { deps, principal, read: () => readContext(deps, principal) };
   const tools = TOOLS.filter((tool) => tool.allowedFor(principal));
   const server = new McpServer(
     { name: "wa", version: deps.version },
@@ -50,30 +34,33 @@ function instructionsFor(principal: TokenPrincipal, deps: ApiDeps): string {
 }
 
 /** `ALL /mcp`, mounted after the guard and bearer auth: the principal comes from the token. */
-export function mcpRoute(deps: ApiDeps): Handler<AppEnv> {
-  const handler = createMcpHandler(({ authInfo }) => buildServerFor(principalOf(authInfo), deps), {
-    onerror: (err) => deps.logger.debug({ err }, "mcp request rejected"),
-  });
+export function mcpHandler(deps: ApiDeps): Handler<AppEnv> {
+  // the SDK hands each request's authInfo back to the factory as is
+  const principals = new WeakMap<AuthInfo, TokenPrincipal>();
+  const handler = createMcpHandler(
+    ({ authInfo }) => buildServerFor(principalOf(principals, authInfo), deps),
+    { onerror: (err) => deps.logger.debug({ err }, "mcp request rejected") },
+  );
   return (c) => {
     // a tool call may wait on a media download
-    deps.noTimeout?.(c.req.raw);
+    deps.noTimeout(c.req.raw);
     const principal = c.get("principal");
     if (principal.kind !== "token") throw new Error("/mcp is served only to bearer tokens");
-    return handler.fetch(c.req.raw, { authInfo: authInfoOf(principal) });
+    const authInfo: AuthInfo = {
+      token: principal.tokenId,
+      clientId: principal.profile,
+      scopes: [...principal.capabilities],
+    };
+    principals.set(authInfo, principal);
+    return handler.fetch(c.req.raw, { authInfo });
   };
 }
 
-function authInfoOf(principal: TokenPrincipal): AuthInfo {
-  return {
-    token: principal.tokenId,
-    clientId: principal.profile,
-    scopes: [...principal.capabilities],
-    extra: { principal },
-  };
-}
-
-function principalOf(authInfo: AuthInfo | undefined): TokenPrincipal {
-  const principal = authInfo?.extra?.principal as TokenPrincipal | undefined;
+function principalOf(
+  principals: WeakMap<AuthInfo, TokenPrincipal>,
+  authInfo: AuthInfo | undefined,
+): TokenPrincipal {
+  const principal = authInfo && principals.get(authInfo);
   if (!principal) throw new Error("an MCP request reached the server without a principal");
   return principal;
 }

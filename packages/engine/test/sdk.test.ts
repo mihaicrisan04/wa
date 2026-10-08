@@ -115,3 +115,13 @@ describe("@wa/sdk against a live engine", () => {
     expect(missing).toMatchObject({ status: 404 });
   });
 });
+
+test("an error body that isn't the engine's shape becomes http_error", async () => {
+  const respond = (body: string) => async () => new Response(body, { status: 502 });
+  for (const body of ["<html>bad gateway</html>", JSON.stringify({ error: { code: 7 } })]) {
+    const error = await createWaClient({ fetch: respond(body) })
+      .status()
+      .catch((err) => err);
+    expect(error).toMatchObject({ status: 502, code: "http_error", candidates: [] });
+  }
+});
