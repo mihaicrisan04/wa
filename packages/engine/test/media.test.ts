@@ -201,6 +201,58 @@ describe("a message revoked while its download is in flight", () => {
   });
 });
 
+describe("disappearing media", () => {
+  const key = { chatJid: ANA_PN, id: "3EB0EPH" };
+  /** Time passing: the message is now past its expiry, the purge timer has not run yet. */
+  const expire = () =>
+    h.store.db.query("UPDATE messages SET expires_at = 1 WHERE id = $id").run({ id: key.id });
+
+  async function cacheWith(
+    download: (message: WAMessage, _type: unknown, _options: unknown) => Promise<Readable>,
+  ) {
+    const { imageMessage } = content.image();
+    const image = buildMessage({
+      chat: ANA_PN,
+      id: key.id,
+      message: { imageMessage: { ...imageMessage, contextInfo: { expiration: 3600 } } },
+    });
+    await h.emit({ "messages.upsert": { messages: [image], type: "notify" } });
+    expect(h.store.messages.get(ANA_PN, key.id)?.expires_at).toBeGreaterThan(Date.now() / 1000);
+    return new MediaCache({
+      store: h.store,
+      home: temp.home,
+      logger: silent,
+      client: () => h.client,
+      download: download as typeof downloadMediaMessage,
+    });
+  }
+
+  const jpeg = () => Readable.from([Buffer.from("jpeg bytes")]);
+
+  test("expiring while the download is in flight keeps no file", async () => {
+    const gate = Promise.withResolvers<void>();
+    const cache = await cacheWith(async () => {
+      await gate.promise;
+      return jpeg();
+    });
+
+    const download = cache.get(key).catch((err: unknown) => err);
+    expire();
+    gate.resolve();
+
+    expect(((await download) as MediaUnavailableError).reason).toBe("not_found");
+    expect(await readdir(cache.dir)).toEqual([]);
+  });
+
+  test("cached bytes are not served once the message expired", async () => {
+    const cache = await cacheWith(async () => jpeg());
+    expect((await cache.get(key)).size).toBeGreaterThan(0);
+    expire();
+    const error = await cache.get(key).catch((err: unknown) => err);
+    expect((error as MediaUnavailableError).reason).toBe("not_found");
+  });
+});
+
 describe("refusals", () => {
   async function reason(id: string): Promise<string> {
     const error = await media.get({ chatJid: ANA_PN, id }).catch((err: unknown) => err);

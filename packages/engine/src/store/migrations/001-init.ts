@@ -41,9 +41,12 @@ CREATE TABLE group_participants (
   group_jid TEXT NOT NULL,
   jid TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('member', 'admin', 'superadmin', 'left')),
+  -- order the roles were learned in, so merging a person's jids keeps the newest; 0 = past member
+  role_seq INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (group_jid, jid)
 );
 CREATE INDEX group_participants_jid ON group_participants (jid);
+CREATE INDEX group_participants_role_seq ON group_participants (role_seq);
 
 CREATE TABLE messages (
   rowid INTEGER PRIMARY KEY,
@@ -74,6 +77,16 @@ CREATE INDEX messages_chat_ts ON messages (chat_jid, ts, rowid);
 CREATE INDEX messages_ts ON messages (ts);
 CREATE INDEX messages_sender ON messages (sender_jid);
 CREATE INDEX messages_expires_at ON messages (expires_at) WHERE expires_at IS NOT NULL;
+
+CREATE TABLE pending_revokes (
+  chat_jid TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  actor_from_me INTEGER NOT NULL,
+  actor_jid TEXT,
+  ts INTEGER NOT NULL
+);
+CREATE INDEX pending_revokes_message ON pending_revokes (chat_jid, message_id);
+CREATE INDEX pending_revokes_actor ON pending_revokes (actor_jid);
 
 CREATE VIRTUAL TABLE messages_fts USING fts5 (
   text, caption, file_name,

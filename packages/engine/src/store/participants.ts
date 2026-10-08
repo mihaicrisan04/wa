@@ -7,6 +7,8 @@ export interface Participant {
   role: ParticipantRole;
 }
 
+const NEXT_SEQ = "(SELECT coalesce(max(role_seq), 0) + 1 FROM group_participants)";
+
 /** `group_participants`: current members with their role, plus past members as `left`. */
 export class ParticipantsRepo {
   constructor(private readonly db: Database) {}
@@ -32,7 +34,10 @@ export class ParticipantsRepo {
   /** A full member list: everyone not in it who was a member is now `left`. */
   replace(groupJid: string, participants: Participant[]): void {
     this.db
-      .query("UPDATE group_participants SET role = 'left' WHERE group_jid = $groupJid")
+      .query(
+        `UPDATE group_participants SET role = 'left', role_seq = ${NEXT_SEQ}
+         WHERE group_jid = $groupJid`,
+      )
       .run({ groupJid });
     for (const participant of participants) this.set(groupJid, participant);
   }
@@ -40,8 +45,9 @@ export class ParticipantsRepo {
   set(groupJid: string, { jid, role }: Participant): void {
     this.db
       .query(
-        `INSERT INTO group_participants (group_jid, jid, role) VALUES ($groupJid, $jid, $role)
-         ON CONFLICT (group_jid, jid) DO UPDATE SET role = excluded.role`,
+        `INSERT INTO group_participants (group_jid, jid, role, role_seq)
+         VALUES ($groupJid, $jid, $role, ${NEXT_SEQ})
+         ON CONFLICT (group_jid, jid) DO UPDATE SET role = excluded.role, role_seq = excluded.role_seq`,
       )
       .run({ groupJid, jid, role });
   }
@@ -60,14 +66,14 @@ export class ParticipantsRepo {
     this.db.query("DELETE FROM group_participants WHERE group_jid = $groupJid").run({ groupJid });
   }
 
-  /** Re-points a person across every group; a clash keeps the existing row. */
+  /** Re-points a person across every group; on a clash the role learned last wins. */
   renameUser(from: string, to: string): void {
     this.db
       .query(
-        `INSERT INTO group_participants (group_jid, jid, role)
-         SELECT group_jid, $to, role FROM group_participants WHERE jid = $from
-         ON CONFLICT (group_jid, jid) DO UPDATE SET role = CASE
-           WHEN group_participants.role = 'left' THEN excluded.role ELSE group_participants.role END`,
+        `INSERT INTO group_participants (group_jid, jid, role, role_seq)
+         SELECT group_jid, $to, role, role_seq FROM group_participants WHERE jid = $from
+         ON CONFLICT (group_jid, jid) DO UPDATE SET role = excluded.role, role_seq = excluded.role_seq
+         WHERE excluded.role_seq > group_participants.role_seq`,
       )
       .run({ from, to });
     this.db.query("DELETE FROM group_participants WHERE jid = $from").run({ from });

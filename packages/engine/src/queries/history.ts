@@ -6,20 +6,22 @@ import { nowSeconds, type Store } from "../store";
 export const HISTORY_STALL_SECONDS = 120;
 
 /**
- * Baileys only reports completion for `initial_bootstrap` and `recent`; the full sync is done at
- * 100% and paused when chunks stop coming. The furthest phase seen decides the overall status.
+ * Only the full sync finishing finishes the sync. Baileys reports completion for
+ * `initial_bootstrap` and `recent` only, so the full sync is done at 100% and, like any phase,
+ * paused when chunks stop coming. The furthest phase seen decides the overall status.
  */
 export function readHistorySync(store: Store, now: number = nowSeconds()): HistorySync {
   const phases = Object.entries(readHistoryPhases({ store }))
     .map(([syncType, phase]) => ({ syncType, ...phase }))
     .sort((a, b) => a.at - b.at);
   const latest = phases.at(-1);
-  const furthest =
-    phases.find((p) => p.syncType === "full") ?? phases.find((p) => p.syncType === "recent");
-  const deciding = furthest ?? latest;
+  const deciding =
+    phases.find((p) => p.syncType === "full") ??
+    phases.find((p) => p.syncType === "recent") ??
+    latest;
   return {
     progress: deciding?.progress ?? null,
-    status: deciding ? statusOf(deciding, Boolean(furthest), now) : null,
+    status: deciding ? overallStatus(deciding, now) : null,
     updatedAt: latest?.at ?? null,
     phases: phases.map(({ syncType, progress, status, chunks, at }): PhaseInfo => ({
       syncType,
@@ -31,9 +33,12 @@ export function readHistorySync(store: Store, now: number = nowSeconds()): Histo
   };
 }
 
-function statusOf(phase: HistoryPhase, isFurthest: boolean, now: number): HistorySync["status"] {
-  // an earlier phase completing (bootstrap) says nothing about the rest of the sync
-  if (isFurthest && phase.status) return phase.status;
-  if (isFurthest && phase.progress === 100) return "complete";
+function overallStatus(
+  phase: HistoryPhase & { syncType: string },
+  now: number,
+): HistorySync["status"] {
+  const fullDone = phase.status === "complete" || phase.progress === 100;
+  if (phase.syncType === "full" && fullDone) return "complete";
+  if (phase.status === "paused") return "paused";
   return now - phase.at >= HISTORY_STALL_SECONDS ? "paused" : null;
 }

@@ -36,7 +36,7 @@ export class MediaRepo {
       .get(key);
   }
 
-  /** False when the message was deleted, revoked or moved meanwhile: the file is not kept. */
+  /** False when the message was deleted, revoked, expired or moved meanwhile: the file is not kept. */
   markDownloaded(key: MessageKeyRef, localPath: string, size: number): boolean {
     const { changes } = this.db
       .query(
@@ -44,6 +44,7 @@ export class MediaRepo {
          WHERE chat_jid = $chatJid AND message_id = $id AND EXISTS (
            SELECT 1 FROM messages
            WHERE chat_jid = media.chat_jid AND id = media.message_id AND deleted_at IS NULL
+             AND (expires_at IS NULL OR expires_at > $now)
          )`,
       )
       .run({ ...key, localPath, size, now: nowSeconds() });

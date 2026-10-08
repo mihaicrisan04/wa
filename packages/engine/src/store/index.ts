@@ -8,6 +8,7 @@ import { MediaRepo } from "./media";
 import { MessagesRepo } from "./messages";
 import { OutboxRepo } from "./outbox";
 import { ParticipantsRepo } from "./participants";
+import { PENDING_REVOKE_TTL, PendingRevokesRepo } from "./pending-revokes";
 import { searchMessages, type SearchHit, type SearchOptions } from "./search";
 import { SyncRepo } from "./sync";
 
@@ -17,6 +18,7 @@ export class Store {
   readonly contacts: ContactsRepo;
   readonly participants: ParticipantsRepo;
   readonly messages: MessagesRepo;
+  readonly pendingRevokes: PendingRevokesRepo;
   readonly media: MediaRepo;
   readonly sync: SyncRepo;
   readonly collections: CollectionsRepo;
@@ -31,6 +33,7 @@ export class Store {
     this.contacts = new ContactsRepo(db);
     this.participants = new ParticipantsRepo(db);
     this.messages = new MessagesRepo(db);
+    this.pendingRevokes = new PendingRevokesRepo(db);
     this.media = new MediaRepo(db);
     this.sync = new SyncRepo(db);
     this.collections = new CollectionsRepo(db);
@@ -50,15 +53,19 @@ export class Store {
     return this.db.transaction(work).immediate();
   }
 
-  /** Deletes disappearing messages past their expiry; returns cached files to remove. */
+  /**
+   * Deletes disappearing messages past their expiry and revokes that waited too long for their
+   * message; returns cached files to remove.
+   */
   purgeExpired(now: number = nowSeconds()): string[] {
-    return this.transaction(() =>
-      this.messages.expired(now).flatMap((key) => {
+    return this.transaction(() => {
+      this.pendingRevokes.prune(now - PENDING_REVOKE_TTL);
+      return this.messages.expired(now).flatMap((key) => {
         const file = this.media.remove(key);
         this.messages.delete(key);
         return file ? [file] : [];
-      }),
-    );
+      });
+    });
   }
 
   search(query: string, options?: SearchOptions): SearchHit[] {
@@ -91,4 +98,5 @@ export {
   type OldestMessage,
 } from "./messages";
 export type { Participant, ParticipantRole } from "./participants";
+export type { PendingRevoke } from "./pending-revokes";
 export { toFtsQuery, type SearchHit, type SearchOptions } from "./search";

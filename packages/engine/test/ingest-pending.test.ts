@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { proto } from "@whiskeysockets/baileys";
 import { buildMessage, content, keyOf } from "../src/testing";
 import {
+  ANA_LID,
   ANA_PN,
   BOB_PN,
   EVE_PN,
@@ -130,4 +131,21 @@ test("a spoofed revoke folded into a buffered message leaves a placeholder the r
   expect(messageRows(h.store, GROUP)).toEqual([
     expect.objectContaining({ id: ID, type: "text", text: "keep me", sender_jid: ANA_PN }),
   ]);
+});
+
+test("a revoke from an unmapped LID hides the original sent under the PN until the mapping says who it is", async () => {
+  await upsert(from(ANA_LID, content.revoke(keyOf(stub()))));
+  await upsert(decrypted(content.text("secret")));
+  expect(messageRows(h.store, GROUP)).toEqual([
+    expect.objectContaining({ id: ID, type: "placeholder", text: null, deleted_at: null }),
+  ]);
+  expect(h.store.search("secret")).toEqual([]);
+  expect(h.ingest.messageContent(keyOf(stub()))).toBeUndefined();
+
+  await h.emit({ "lid-mapping.update": { lid: ANA_LID, pn: ANA_PN } });
+  await upsert(decrypted(content.text("secret")));
+  expect(messageRows(h.store, GROUP)).toEqual([
+    expect.objectContaining({ id: ID, type: "revoked", text: null }),
+  ]);
+  expect(h.store.search("secret")).toEqual([]);
 });

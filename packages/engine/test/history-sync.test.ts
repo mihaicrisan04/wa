@@ -47,17 +47,22 @@ describe("overall history sync", () => {
     expect(summary({ initial_bootstrap: { ...bootstrap, at: STALE } }).status).toBe("paused");
   });
 
-  test("recent decides while no full sync was seen", () => {
+  test("recent decides while no full sync was seen, but never finishes the sync", () => {
     const bootstrap = phase({ status: "complete", at: FRESH - 10 });
     expect(
       summary({ initial_bootstrap: bootstrap, recent: phase({ progress: 40 }) }),
     ).toMatchObject({ progress: 40, status: null });
-    expect(
-      summary({
-        initial_bootstrap: bootstrap,
-        recent: phase({ progress: 100, status: "complete", explicit: true }),
-      }),
-    ).toMatchObject({ progress: 100, status: "complete" });
+    // the full sync starts after recent completes
+    const recent = phase({ progress: 100, status: "complete", explicit: true });
+    expect(summary({ initial_bootstrap: bootstrap, recent })).toMatchObject({
+      progress: 100,
+      status: null,
+    });
+    // no full sync after it for a while: WhatsApp stopped sending
+    expect(summary({ recent: { ...recent, at: STALE } })).toMatchObject({
+      progress: 100,
+      status: "paused",
+    });
     expect(summary({ recent: phase({ progress: 70, status: "paused" }) })).toMatchObject({
       progress: 70,
       status: "paused",
@@ -137,6 +142,10 @@ describe("surfaced in status", () => {
           status: "complete",
           explicit: true,
         },
+      });
+      expect((await status()).history.status).toBeNull();
+      await api.emit({
+        "messaging-history.set": historySet({ syncType: HistorySyncType.FULL, progress: 100 }),
       });
       expect((await status()).history.status).toBe("complete");
 

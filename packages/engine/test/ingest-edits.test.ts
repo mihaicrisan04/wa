@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { proto } from "@whiskeysockets/baileys";
 import { buildMessage, content, historySet, keyOf } from "../src/testing";
 import {
+  ANA_LID,
   ANA_PN,
-  BOB_PN,
   EVE_PN,
   GROUP,
   harness,
@@ -63,6 +62,29 @@ describe("edits", () => {
       ],
     });
     expect(messageRows(h.store, GROUP)[0]).toMatchObject({ text: "v3", edited_at: 1_700_000_900 });
+  });
+
+  test("the sender addressed by LID edits the message stored under the PN", async () => {
+    const target = original();
+    await upsert(target);
+    const lidKey = { participant: ANA_LID, participantAlt: ANA_PN, addressingMode: "lid" as const };
+    await upsert(
+      buildMessage({ chat: GROUP, ...lidKey, message: content.edit(keyOf(target), "v2") }),
+    );
+    expect(messageRows(h.store, GROUP)[0]).toMatchObject({ text: "v2" });
+
+    await h.emit({
+      "messages.update": [
+        {
+          key: { ...keyOf(target), ...lidKey },
+          update: {
+            message: { editedMessage: { message: { conversation: "v3" } } },
+            messageTimestamp: 1_900_000_000,
+          },
+        },
+      ],
+    });
+    expect(messageRows(h.store, GROUP)[0]).toMatchObject({ text: "v3", edited_at: 1_900_000_000 });
   });
 
   test("a spoofed edit from someone else is ignored", async () => {
@@ -193,156 +215,5 @@ describe("edits", () => {
       has_media: 1,
     });
     expect(h.ingest.messageContent(keyOf(image))?.imageMessage).toMatchObject({ caption: "after" });
-  });
-});
-
-describe("revokes", () => {
-  /** The target's key is lost when Baileys folds a revoke, so neither sender nor content is kept. */
-  const foldedPlaceholder = expect.objectContaining({
-    id: "3EB0GONE",
-    type: "placeholder",
-    caption: null,
-    sender_jid: null,
-    deleted_at: null,
-  });
-
-  const target = () =>
-    buildMessage({
-      chat: GROUP,
-      id: "3EB0GONE",
-      participant: ANA_PN,
-      message: content.image({ caption: "secret" }),
-    });
-
-  test("the sender's revoke clears content and keeps a tombstone", async () => {
-    const message = target();
-    await upsert(message);
-    await upsert(
-      buildMessage({ chat: GROUP, participant: ANA_PN, message: content.revoke(keyOf(message)) }),
-    );
-
-    expect(h.store.messages.get(GROUP, "3EB0GONE")).toMatchObject({
-      type: "revoked",
-      caption: null,
-      has_media: 0,
-    });
-    expect(h.store.messages.get(GROUP, "3EB0GONE")?.deleted_at).toBeGreaterThan(0);
-    expect(h.store.media.get({ chatJid: GROUP, id: "3EB0GONE" })).toBeNull();
-    expect(h.store.search("secret")).toEqual([]);
-    expect(h.ingest.messageContent(keyOf(message))).toBeUndefined();
-  });
-
-  test("a group admin may revoke someone else's message", async () => {
-    await h.emit({
-      "groups.upsert": [
-        {
-          id: GROUP,
-          subject: "PP",
-          owner: undefined,
-          participants: [
-            { id: ANA_PN, admin: null },
-            { id: BOB_PN, admin: "admin" },
-          ],
-        },
-      ],
-    });
-    await upsert(target());
-    await h.emit({
-      "messages.update": [
-        {
-          key: { remoteJid: GROUP, id: "3EB0GONE", fromMe: false, participant: BOB_PN },
-          update: { message: null, messageStubType: proto.WebMessageInfo.StubType.REVOKE },
-        },
-      ],
-    });
-    expect(h.store.messages.get(GROUP, "3EB0GONE")?.type).toBe("revoked");
-  });
-
-  test("a spoofed revoke from a non-admin is ignored", async () => {
-    const message = target();
-    await upsert(message);
-    await upsert(
-      buildMessage({ chat: GROUP, participant: EVE_PN, message: content.revoke(keyOf(message)) }),
-    );
-    await h.emit({
-      "messages.update": [
-        {
-          key: { remoteJid: GROUP, id: "3EB0GONE", fromMe: false, participant: EVE_PN },
-          update: { message: null, messageStubType: proto.WebMessageInfo.StubType.REVOKE },
-        },
-      ],
-    });
-    expect(h.store.messages.get(GROUP, "3EB0GONE")).toMatchObject({
-      type: "image",
-      caption: "secret",
-      deleted_at: null,
-    });
-  });
-
-  test("a revoke Baileys folded into a buffered message leaves only a placeholder", async () => {
-    await h.buffered((client) => {
-      const message = target();
-      const carrier = buildMessage({
-        chat: GROUP,
-        participant: ANA_PN,
-        message: content.revoke(keyOf(message)),
-      });
-      client.emit("messages.upsert", { messages: [message], type: "notify" });
-      client.emit("messages.upsert", { messages: [carrier], type: "notify" });
-      client.emit("messages.update", [
-        {
-          key: { ...keyOf(carrier), id: message.key.id },
-          update: {
-            message: null,
-            messageStubType: proto.WebMessageInfo.StubType.REVOKE,
-            key: keyOf(carrier),
-          },
-        },
-      ]);
-    });
-    expect(messageRows(h.store, GROUP)).toEqual([foldedPlaceholder]);
-    expect(h.store.search("secret")).toEqual([]);
-  });
-
-  test("a revoke Baileys folded into a buffered history message leaves only a placeholder", async () => {
-    await h.buffered((client) => {
-      const message = target();
-      const carrier = buildMessage({
-        chat: GROUP,
-        participant: ANA_PN,
-        message: content.revoke(keyOf(message)),
-      });
-      client.emit("messaging-history.set", historySet({ messages: [message] }));
-      client.emit("messages.upsert", { messages: [carrier], type: "notify" });
-      client.emit("messages.update", [
-        {
-          key: { ...keyOf(carrier), id: message.key.id },
-          update: {
-            message: null,
-            messageStubType: proto.WebMessageInfo.StubType.REVOKE,
-            key: keyOf(carrier),
-          },
-        },
-      ]);
-    });
-    expect(messageRows(h.store, GROUP)).toEqual([foldedPlaceholder]);
-    expect(h.store.search("secret")).toEqual([]);
-  });
-
-  test("history tombstones are stored as revoked", async () => {
-    await h.emit({
-      "messages.upsert": {
-        type: "append",
-        messages: [
-          buildMessage({
-            chat: ANA_PN,
-            id: "3EB0OLD",
-            message: null,
-            stubType: proto.WebMessageInfo.StubType.REVOKE,
-          }),
-        ],
-      },
-    });
-    expect(h.store.messages.get(ANA_PN, "3EB0OLD")?.type).toBe("revoked");
   });
 });

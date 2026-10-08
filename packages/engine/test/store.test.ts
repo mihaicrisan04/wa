@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { migrate, openDatabase } from "../src/store/db";
 import { MIGRATIONS } from "../src/store/migrations";
-import { openStore, toFtsQuery, type MessageRecord, type Store } from "../src/store";
+import { nowSeconds, openStore, toFtsQuery, type MessageRecord, type Store } from "../src/store";
 import { ANA_PN } from "./support/jids";
 
 let store: Store;
@@ -68,6 +68,7 @@ describe("migrations", () => {
       "group_participants",
       "messages",
       "messages_fts",
+      "pending_revokes",
       "media",
       "collections",
       "collection_chats",
@@ -250,18 +251,30 @@ describe("chats", () => {
 
 describe("disappearing messages", () => {
   test("are purged with their media once expired", () => {
-    store.messages.upsert(record({ id: "old", expiresAt: 100, media: null }));
+    const now = nowSeconds();
+    store.messages.upsert(record({ id: "old", expiresAt: now + 100, media: null }));
     store.media.upsert(
       { chatJid: ANA_PN, id: "old" },
       { kind: "image", mimetype: "image/jpeg", fileName: null, size: 1 },
     );
     store.media.markDownloaded({ chatJid: ANA_PN, id: "old" }, "/tmp/wa-test-media.jpeg", 1);
-    store.messages.upsert(record({ id: "new", expiresAt: 10_000 }));
+    store.messages.upsert(record({ id: "new", expiresAt: now + 10_000 }));
     store.messages.upsert(record({ id: "keeps", expiresAt: null }));
 
-    expect(store.purgeExpired(500)).toEqual(["/tmp/wa-test-media.jpeg"]);
+    expect(store.purgeExpired(now + 500)).toEqual(["/tmp/wa-test-media.jpeg"]);
     expect(count(store, "SELECT id FROM messages")).toBe(2);
     expect(count(store, "SELECT * FROM media")).toBe(0);
+  });
+
+  test("purging also drops revokes that waited a month for their message", () => {
+    const now = nowSeconds();
+    const actor = { fromMe: false, jid: ANA_PN };
+    store.pendingRevokes.add({ chatJid: ANA_PN, id: "stale" }, { actor, ts: now - 31 * 86_400 });
+    store.pendingRevokes.add({ chatJid: ANA_PN, id: "fresh" }, { actor, ts: now - 86_400 });
+
+    store.purgeExpired(now);
+    expect(store.pendingRevokes.take({ chatJid: ANA_PN, id: "stale" })).toEqual([]);
+    expect(store.pendingRevokes.take({ chatJid: ANA_PN, id: "fresh" })).toHaveLength(1);
   });
 });
 
