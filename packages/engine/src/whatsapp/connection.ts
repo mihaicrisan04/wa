@@ -35,7 +35,16 @@ export interface ConnectionOptions {
   /** A socket for the persisted auth state, on every (re)connect. */
   createClient: (auth: AuthenticationState) => WhatsAppClient | Promise<WhatsAppClient>;
   backoff?: Backoff;
+  schedule?: Schedule;
 }
+
+/** Runs `run` after `delayMs`; the returned function cancels it. */
+export type Schedule = (run: () => void, delayMs: number) => () => void;
+
+const scheduleTimeout: Schedule = (run, delayMs) => {
+  const timer = setTimeout(run, delayMs);
+  return () => clearTimeout(timer);
+};
 
 type ClientListener = (client: WhatsAppClient) => void | Promise<void>;
 
@@ -53,7 +62,7 @@ export class WhatsAppConnection {
   private auth: { state: AuthenticationState; saveCreds: () => Promise<void> } | null = null;
   private socket: WhatsAppClient | null = null;
   private detachSocket: (() => void) | null = null;
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private cancelReconnect: (() => void) | null = null;
   private reconnectAttempt = 0;
   private generation = 0;
   private state: ConnectionState = "stopped";
@@ -62,9 +71,11 @@ export class WhatsAppConnection {
   private readonly clientListeners = new Set<ClientListener>();
   private readonly openListeners = new Set<ClientListener>();
   private readonly backoff: Backoff;
+  private readonly schedule: Schedule;
 
   constructor(private readonly options: ConnectionOptions) {
     this.backoff = options.backoff ?? DEFAULT_BACKOFF;
+    this.schedule = options.schedule ?? scheduleTimeout;
   }
 
   private get logger(): Logger {
@@ -228,15 +239,15 @@ export class WhatsAppConnection {
     const delay = backoffDelay(this.backoff, this.reconnectAttempt);
     this.state = "reconnecting";
     this.logger.info({ delay, attempt: this.reconnectAttempt }, "reconnecting to WhatsApp");
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = null;
+    this.cancelReconnect = this.schedule(() => {
+      this.cancelReconnect = null;
       void this.connect(state);
     }, delay);
   }
 
   private clearReconnectTimer(): void {
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    this.reconnectTimer = null;
+    this.cancelReconnect?.();
+    this.cancelReconnect = null;
   }
 
   private async retireSocket(): Promise<void> {
