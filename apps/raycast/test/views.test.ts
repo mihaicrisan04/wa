@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ConnectionState, Status } from "@wa/sdk";
+import type { ConnectionState, HistorySync, Status } from "@wa/sdk";
 import { isFinal, linkMarkdown, linkStep } from "../src/lib/link-flow";
 import { historyLabel, needsLink, statusMarkdown, statusRows } from "../src/lib/status-view";
 import { PEER } from "./support";
@@ -48,7 +48,7 @@ function status(overrides: Partial<Status> = {}): Status {
     needsLink: false,
     me: { jid: PEER, lid: "1@lid" },
     lastDisconnect: null,
-    history: { progress: 42.4, status: null, updatedAt: 1 },
+    history: { progress: 42.4, status: null, updatedAt: 1, phases: [] },
     counts: { chats: 12, messages: 34_567 },
     outbox: { pending: 0 },
     ...overrides,
@@ -57,10 +57,21 @@ function status(overrides: Partial<Status> = {}): Status {
 
 describe("status view", () => {
   test("history sync progress", () => {
-    expect(historyLabel({ progress: null, status: null, updatedAt: null })).toBe("Not started");
-    expect(historyLabel({ progress: 42.4, status: null, updatedAt: 1 })).toBe("Syncing, 42%");
-    expect(historyLabel({ progress: 80, status: "paused", updatedAt: 1 })).toBe("Paused at 80%");
-    expect(historyLabel({ progress: 80, status: "complete", updatedAt: 1 })).toBe("Complete");
+    const sync = (patch: Partial<HistorySync>): HistorySync => ({
+      progress: null,
+      status: null,
+      updatedAt: null,
+      phases: [],
+      ...patch,
+    });
+    expect(historyLabel(sync({}))).toBe("Not started");
+    expect(historyLabel(sync({ progress: 42.4, updatedAt: 1 }))).toBe("Syncing, 42%");
+    const bootstrap = { syncType: "initial_bootstrap", progress: null, chunks: 1, updatedAt: 1 };
+    expect(historyLabel(sync({ phases: [{ ...bootstrap, status: "complete" }] }))).toBe("Syncing");
+    expect(historyLabel(sync({ progress: 80, status: "paused", updatedAt: 1 }))).toBe(
+      "Paused at 80%",
+    );
+    expect(historyLabel(sync({ progress: 80, status: "complete", updatedAt: 1 }))).toBe("Complete");
   });
 
   test("rows cover connection, identity, sync, counts, outbox and engine", () => {

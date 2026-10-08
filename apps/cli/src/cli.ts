@@ -9,6 +9,7 @@ import {
   type CommandIO,
 } from "./command";
 import { audit } from "./commands/audit";
+import { backfill } from "./commands/backfill";
 import { chats } from "./commands/chats";
 import { collections } from "./commands/collections";
 import { link } from "./commands/link";
@@ -31,6 +32,7 @@ export const COMMANDS: Command[] = [
   chats,
   read,
   search,
+  backfill,
   collections,
   profiles,
   tokens,

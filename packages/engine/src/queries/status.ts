@@ -1,14 +1,9 @@
 import type { MediaInfo, Status } from "@wa/sdk";
 import { notFound } from "../errors";
-import {
-  HISTORY_PROGRESS_KEY,
-  HISTORY_STATUS_KEY,
-  type HistoryProgress,
-  type HistoryStatus,
-} from "../ingest";
 import { and, scopeSql, type SqlFragment, type SqlParams } from "../policy";
 import type { MediaRow } from "../store";
 import type { ConnectionStatus } from "../whatsapp/connection";
+import { readHistorySync } from "./history";
 import { visibleMessages } from "./messages";
 import { resolveChat } from "./resolve";
 import type { ReadContext } from "./rows";
@@ -21,19 +16,13 @@ export function readStatus(
   version: string,
   connection: ConnectionStatus,
 ): Status {
-  const progress = ctx.store.sync.get<HistoryProgress>(HISTORY_PROGRESS_KEY);
-  const history = ctx.store.sync.get<HistoryStatus>(HISTORY_STATUS_KEY);
   return {
     version,
     state: connection.state,
     needsLink: NEEDS_LINK.has(connection.state),
     me: connection.me ? { jid: connection.me.pn, lid: connection.me.lid } : null,
     lastDisconnect: connection.lastDisconnect,
-    history: {
-      progress: progress?.progress ?? null,
-      status: history?.status ?? null,
-      updatedAt: Math.max(progress?.at ?? 0, history?.at ?? 0) || null,
-    },
+    history: readHistorySync(ctx.store),
     counts: {
       chats: count(ctx, "chats AS ch", scopeSql(ctx.principal, "ch.jid")),
       messages: count(ctx, "messages AS m", visibleMessages(ctx)),

@@ -1,8 +1,10 @@
 export {
   FakeLidMapping,
   FakeWhatsAppClient,
+  phoneArchive,
   type FakeIdentity,
   type HistoryRequest,
+  type HistoryResponder,
   type SentMessage,
 } from "./fake-client";
 export {
@@ -11,6 +13,7 @@ export {
   content,
   fixtureId,
   historySet,
+  HistorySyncType,
   keyOf,
   type HistorySet,
   type MessageFixture,

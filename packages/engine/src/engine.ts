@@ -2,6 +2,7 @@ import { chmod, mkdir, rm } from "node:fs/promises";
 import { MAX_UPLOAD_BYTES } from "@wa/sdk";
 import type { Server } from "bun";
 import { ensureRaycastAccess } from "./access";
+import { Backfills } from "./backfill";
 import { createApp, type ApiDeps, type App } from "./api/app";
 import { claimSocket, listenOnSocket } from "./api/socket";
 import {
@@ -32,6 +33,8 @@ export interface StartEngineOptions {
   exportDir?: string;
   /** Replaces Baileys' media downloader (tests must never reach WhatsApp's CDN). */
   mediaDownload?: MediaCacheOptions["download"];
+  /** How long `wa backfill` waits for the phone to answer one page (45s). */
+  backfillTimeoutMs?: number;
 }
 
 export interface Engine {
@@ -44,6 +47,7 @@ export interface Engine {
   ingest: Ingest;
   media: MediaCache;
   outbox: Outbox;
+  backfills: Backfills;
   /** The HTTP apps behind the TCP listener and the admin socket. */
   apps: { tcp: App; admin: App };
   stop(): Promise<void>;
@@ -85,15 +89,23 @@ export async function startEngine(
     client: () => connection.client(),
     download: options.mediaDownload,
   });
+  const connectedClient = () => (connection.status().state === "open" ? connection.client() : null);
   const outbox = new Outbox({
     store,
     home: config.home,
     logger,
-    client: () => (connection.status().state === "open" ? connection.client() : null),
+    client: connectedClient,
     me: () => connection.me(),
     backoff: options.outboxBackoff,
   });
   connection.onOpen(() => outbox.flush());
+  const backfills = new Backfills({
+    store,
+    ingest,
+    logger,
+    client: connectedClient,
+    timeoutMs: options.backfillTimeoutMs,
+  });
 
   const purge = setInterval(() => {
     void removeCachedFiles(store.purgeExpired(), logger).catch((err: unknown) => {
@@ -111,6 +123,7 @@ export async function startEngine(
     connection,
     media,
     outbox,
+    backfills,
     exportDir: options.exportDir,
   };
   const apps = {
@@ -126,6 +139,7 @@ export async function startEngine(
 
   const stop = async () => {
     clearInterval(purge);
+    await backfills.stop();
     await connection.stop();
     await outbox.stop();
     await server?.stop(true);
@@ -161,6 +175,7 @@ export async function startEngine(
     ingest,
     media,
     outbox,
+    backfills,
     apps,
     stop,
   };

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { ApiDeps, AppEnv } from "../../context";
 import { auditRoutes } from "./audit";
+import { backfillRoutes } from "./backfill";
 import { collectionRoutes } from "./collections";
 import { profileRoutes } from "./profiles";
 import { tokenRoutes } from "./tokens";
@@ -11,5 +12,6 @@ export function adminRoutes(deps: ApiDeps) {
     .route("/", collectionRoutes(deps))
     .route("/", profileRoutes(deps))
     .route("/", tokenRoutes(deps))
-    .route("/", auditRoutes(deps));
+    .route("/", auditRoutes(deps))
+    .route("/", backfillRoutes(deps));
 }

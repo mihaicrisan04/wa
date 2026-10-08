@@ -12,6 +12,14 @@ export class IdentityRepo {
     );
   }
 
+  lidForPn(pn: string): string | null {
+    return (
+      this.db
+        .query<{ lid: string }, { pn: string }>("SELECT lid FROM lid_map WHERE pn = $pn LIMIT 1")
+        .get({ pn })?.lid ?? null
+    );
+  }
+
   /** Returns false when the mapping was already known. */
   setMapping(lid: string, pn: string): boolean {
     return (

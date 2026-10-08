@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { proto } from "@whiskeysockets/baileys";
-import { HISTORY_PROGRESS_KEY, HISTORY_STATUS_KEY, type HistoryProgress } from "../src/ingest";
+import { readHistoryPhases, type HistoryPage } from "../src/ingest";
+import { readHistorySync } from "../src/queries";
 import { buildChat, buildMessage, content, historySet } from "../src/testing";
 import {
   ANA_LID,
@@ -88,10 +89,9 @@ describe("messaging-history.set", () => {
     expect(h.store.messages.get(ANA_PN, messageRows(h.store, ANA_PN)[0]!.id)?.source).toBe(
       "history",
     );
-    expect(h.store.sync.get<HistoryProgress>(HISTORY_PROGRESS_KEY)).toMatchObject({
-      syncType: HistorySyncType.FULL,
-      progress: 60,
-      isLatest: true,
+    // consolidation keeps the last chunk's sync type and progress
+    expect(readHistoryPhases(h)).toEqual({
+      full: { progress: 60, status: null, explicit: null, chunks: 1, at: expect.any(Number) },
     });
   });
 
@@ -128,15 +128,97 @@ describe("messaging-history.set", () => {
         isLatest: false,
       }),
     });
+    const pages: HistoryPage[] = [];
+    h.ingest.onHistoryPage((page) => pages.push(page));
     h.client.respondToHistory("req-1", [
-      buildMessage({ chat: ANA_PN, ts: 1_500_000_000, message: content.text("old") }),
+      buildMessage({
+        chat: ANA_LID,
+        remoteJidAlt: ANA_PN,
+        ts: 1_500_000_000,
+        message: content.text("old"),
+      }),
+      buildMessage({ chat: ANA_PN, ts: 1_500_000_001, message: content.text("older") }),
+      buildMessage({ chat: BOB_PN, ts: 1_500_000_000, message: content.text("other") }),
     ]);
     await h.client.idle();
-    expect(messageRows(h.store, ANA_PN).map((row) => row.text)).toEqual(["old"]);
-    expect(h.store.sync.get<HistoryProgress>(HISTORY_PROGRESS_KEY)?.progress).toBe(80);
+    expect(messageRows(h.store, ANA_PN).map((row) => row.text)).toEqual(["old", "older"]);
+    expect(readHistoryPhases(h)).toEqual({
+      full: { progress: 80, status: null, explicit: null, chunks: 1, at: expect.any(Number) },
+    });
+    // the listener hears about it once it is stored, with canonical chats
+    expect(pages).toEqual([
+      {
+        sessionId: "req-1",
+        chats: new Map([
+          [ANA_PN, 2],
+          [BOB_PN, 1],
+        ]),
+      },
+    ]);
   });
 
-  test("completion comes from messaging-history.status", async () => {
+  test("messaging-history.status is kept per sync type", async () => {
+    await h.emit({
+      "messaging-history.status": {
+        syncType: HistorySyncType.INITIAL_BOOTSTRAP,
+        status: "complete",
+        explicit: true,
+      },
+    });
+    await h.emit({
+      "messaging-history.set": historySet({ syncType: HistorySyncType.RECENT, progress: 40 }),
+    });
+    await h.emit({
+      "messaging-history.status": {
+        syncType: HistorySyncType.RECENT,
+        status: "paused",
+        explicit: false,
+      },
+    });
+    expect(readHistoryPhases(h)).toEqual({
+      initial_bootstrap: {
+        progress: null,
+        status: "complete",
+        explicit: true,
+        chunks: 0,
+        at: expect.any(Number),
+      },
+      recent: {
+        progress: 40,
+        status: "paused",
+        explicit: false,
+        chunks: 1,
+        at: expect.any(Number),
+      },
+    });
+  });
+
+  test("a pause Baileys guessed from silence clears once chunks resume", async () => {
+    const recent = (progress: number) => ({
+      "messaging-history.set": historySet({ syncType: HistorySyncType.RECENT, progress }),
+    });
+    await h.emit(recent(40));
+    await h.emit({
+      "messaging-history.status": {
+        syncType: HistorySyncType.RECENT,
+        status: "paused",
+        explicit: false,
+      },
+    });
+    expect(readHistorySync(h.store).status).toBe("paused");
+
+    // Baileys never reports RECENT complete after its own pause; reaching 100% has to say it
+    await h.emit(recent(70));
+    expect(readHistorySync(h.store)).toMatchObject({ progress: 70, status: null });
+    await h.emit(recent(100));
+    expect(readHistorySync(h.store)).toMatchObject({
+      progress: 100,
+      status: "complete",
+      phases: [{ syncType: "recent", progress: 100, status: null, chunks: 3 }],
+    });
+  });
+
+  test("an explicit status survives later chunks", async () => {
     await h.emit({
       "messaging-history.status": {
         syncType: HistorySyncType.FULL,
@@ -144,11 +226,10 @@ describe("messaging-history.set", () => {
         explicit: true,
       },
     });
-    expect(h.store.sync.get(HISTORY_STATUS_KEY)).toMatchObject({
-      syncType: HistorySyncType.FULL,
-      status: "complete",
-      explicit: true,
+    await h.emit({
+      "messaging-history.set": historySet({ syncType: HistorySyncType.FULL, progress: 90 }),
     });
+    expect(readHistoryPhases(h).full).toMatchObject({ status: "complete", explicit: true });
   });
 
   test("past participants are remembered as having left", async () => {

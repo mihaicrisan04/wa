@@ -36,12 +36,30 @@ export type ConnectionState =
 
 export type ChatKind = "dm" | "group" | "self" | "broadcast" | "newsletter" | "other";
 
-export interface HistorySync {
-  /** 0-100 from the last history chunk, null before the first one. */
+export type HistorySyncStatus = "complete" | "paused";
+
+/** One WhatsApp history sync type (`initial_bootstrap`, `recent`, `full`, `push_name`…). */
+export interface HistoryPhase {
+  syncType: string;
+  /** 0-100 from the phase's last chunk. */
   progress: number | null;
-  /** `complete` or `paused` once WhatsApp says so; `isLatest` alone does not mean done. */
-  status: "complete" | "paused" | null;
+  status: HistorySyncStatus | null;
+  /** Chunks received so far. */
+  chunks: number;
+  updatedAt: number;
+}
+
+export interface HistorySync {
+  /** 0-100 of the furthest phase (full, else recent), null before any chunk. */
+  progress: number | null;
+  /**
+   * `complete` once the furthest phase is done, `paused` when WhatsApp stopped sending before
+   * that; null while syncing or before it started. `isLatest` alone does not mean done.
+   */
+  status: HistorySyncStatus | null;
   updatedAt: number | null;
+  /** Oldest first. */
+  phases: HistoryPhase[];
 }
 
 export interface Status {
@@ -236,4 +254,36 @@ export interface AuditEntry {
   action: string;
   chat: string | null;
   detail: Record<string, unknown> | null;
+}
+
+/**
+ * Why a backfill stopped: `max` reached, `empty` (WhatsApp has nothing older), `timeout` (the
+ * phone did not answer), `no_anchor` (nothing stored in the chat to page back from),
+ * `disconnected`, `stopped` (the engine shut down) or `failed`.
+ */
+export type BackfillStopReason =
+  | "max"
+  | "empty"
+  | "timeout"
+  | "no_anchor"
+  | "disconnected"
+  | "stopped"
+  | "failed";
+
+/** A `wa backfill` run: pages of older messages requested from the phone, one after another. */
+export interface BackfillJob {
+  id: string;
+  chat: string;
+  chatName: string | null;
+  state: "running" | "done";
+  max: number;
+  /** Older messages stored so far. */
+  fetched: number;
+  /** History requests sent to the phone. */
+  requests: number;
+  /** Unix seconds of the chat's oldest stored message. */
+  oldestAt: number | null;
+  stopReason: BackfillStopReason | null;
+  startedAt: number;
+  finishedAt: number | null;
 }

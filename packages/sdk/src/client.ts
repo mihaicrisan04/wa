@@ -1,6 +1,7 @@
 import type {
   ApiErrorBody,
   AuditEntry,
+  BackfillJob,
   Chat,
   ChatCandidate,
   ChatDetail,
@@ -25,6 +26,9 @@ import type {
 } from "./types";
 
 export const DEFAULT_PORT = 7373;
+
+/** How many older messages `admin.backfill.start` asks for when `max` is left out. */
+export const BACKFILL_DEFAULT_MAX = 500;
 
 /** WhatsApp's cap for documents; the engine accepts uploads up to this size. */
 export const MAX_UPLOAD_BYTES = 2 * 1024 ** 3;
@@ -124,6 +128,11 @@ export interface WaAdminClient {
     revoke(id: string): Promise<TokenInfo>;
   };
   audit(params?: { profile?: string; limit?: number; cursor?: string }): Promise<Page<AuditEntry>>;
+  backfill: {
+    /** Asks the phone for older messages of a chat in the background; poll with `get`. */
+    start(input: { chat: string; max?: number }): Promise<BackfillJob>;
+    get(id: string): Promise<BackfillJob>;
+  };
 }
 
 export interface WaClient {
@@ -217,6 +226,10 @@ export function createWaClient(options: WaClientOptions = {}): WaClient {
       revoke: (id) => call(`/v1/admin/tokens/${enc(id)}`, { method: "DELETE" }),
     },
     audit: (params = {}) => call("/v1/admin/audit", { query: { ...params } }),
+    backfill: {
+      start: (input) => call("/v1/admin/backfill", { method: "POST", json: input }),
+      get: (id) => call(`/v1/admin/backfill/${enc(id)}`),
+    },
   };
 
   return {

@@ -9,7 +9,7 @@ import { parseRaw } from "../whatsapp/raw";
 import { deleteChats, ingestChat, ingestChatUpdate, ingestContact } from "./chats-contacts";
 import type { IngestContext } from "./context";
 import { GroupCache, ingestGroup, ingestParticipantsUpdate } from "./groups";
-import { ingestHistory, recordHistoryStatus } from "./history";
+import { ingestHistory, recordHistoryStatus, type HistoryPage } from "./history";
 import { Identity, lookupLids, mappingsIn, unmappedLids, type Batch } from "./lid";
 import {
   applyActions,
@@ -35,6 +35,7 @@ export interface IngestOptions {
 export class Ingest {
   readonly groups: GroupCache;
   private queue: Promise<void> = Promise.resolve();
+  private readonly pageListeners = new Set<(page: HistoryPage) => void>();
 
   constructor(private readonly options: IngestOptions) {
     this.groups = options.groups ?? new GroupCache();
@@ -55,6 +56,12 @@ export class Ingest {
   /** Resolves once every batch handed over so far is stored. */
   drain(): Promise<void> {
     return this.queue;
+  }
+
+  /** Called with every stored answer to an on-demand history request. */
+  onHistoryPage(listener: (page: HistoryPage) => void): () => void {
+    this.pageListeners.add(listener);
+    return () => this.pageListeners.delete(listener);
   }
 
   /** Content of a stored message, for Baileys to answer retry receipts. */
@@ -81,28 +88,30 @@ export class Ingest {
       logger,
       orphanedFiles: [],
     };
+    let page: HistoryPage | null;
     try {
-      store.transaction(() => {
+      page = store.transaction(() => {
         for (const mapping of mappings) ctx.orphanedFiles.push(...ctx.identity.learn(mapping));
-        apply(ctx, batch);
+        return apply(ctx, batch);
       });
     } catch (err) {
       logger.error({ err, events: Object.keys(batch) }, "could not store a WhatsApp event batch");
       return;
     }
     this.groups.apply(batch);
+    if (page) for (const listener of this.pageListeners) listener(page);
     await removeCachedFiles(ctx.orphanedFiles, logger);
   }
 }
 
 /** Order matters: chats and people exist before messages, deletes come last. */
-function apply(ctx: IngestContext, batch: Batch): void {
+function apply(ctx: IngestContext, batch: Batch): HistoryPage | null {
   const history = batch["messaging-history.set"];
   const historyMessages = normalizeMessages(ctx, history?.messages ?? [], "history");
   const liveMessages = normalizeMessages(ctx, batch["messages.upsert"]?.messages ?? [], "live");
   const carriers = carriersOf(historyMessages, liveMessages);
 
-  if (history) ingestHistory(ctx, history, historyMessages, carriers);
+  const page = history ? ingestHistory(ctx, history, historyMessages, carriers) : null;
   const status = batch["messaging-history.status"];
   if (status) recordHistoryStatus(ctx, status);
 
@@ -122,14 +131,16 @@ function apply(ctx: IngestContext, batch: Batch): void {
   const deleted = batch["messages.delete"];
   if (deleted) deleteMessages(ctx, deleted);
   deleteChats(ctx, batch["chats.delete"] ?? []);
+  return page;
 }
 
 export { GroupCache } from "./groups";
 export {
-  HISTORY_PROGRESS_KEY,
-  HISTORY_STATUS_KEY,
-  type HistoryProgress,
-  type HistoryStatus,
+  HISTORY_PHASES_KEY,
+  readHistoryPhases,
+  type HistoryPage,
+  type HistoryPhase,
+  type HistoryPhases,
 } from "./history";
 export { Identity } from "./lid";
 export { reindex, type ReindexResult } from "./reindex";

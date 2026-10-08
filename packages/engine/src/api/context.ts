@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import type { Backfills } from "../backfill";
 import { Identity } from "../ingest";
 import type { Logger } from "../logger";
 import type { Outbox } from "../outbox";
@@ -16,6 +17,7 @@ export interface ApiDeps {
   connection: WhatsAppConnection;
   media: MediaCache;
   outbox: Outbox;
+  backfills: Backfills;
   /** Where MCP `download_media` exports files; `$TMPDIR/wa-export` by default. */
   exportDir?: string;
   /** Lifts the server's idle timeout for a long response (media downloads). */

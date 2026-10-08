@@ -2,6 +2,7 @@ import type { Qr, Status } from "@wa/sdk";
 import { Hono } from "hono";
 import { z } from "zod";
 import { ApiError } from "../../errors";
+import { HISTORY_PHASES_KEY } from "../../ingest";
 import { actorOf, assertCan } from "../../policy";
 import { readStatus } from "../../queries";
 import { AlreadyLinkedError } from "../../whatsapp/connection";
@@ -35,6 +36,8 @@ export function statusRoutes(deps: ApiDeps) {
         if (!(err instanceof AlreadyLinkedError)) throw err;
         throw new ApiError(409, "already_linked", "WhatsApp is already linked");
       }
+      // a new device gets a new history sync; the old one's progress would read as done
+      deps.store.sync.delete(HISTORY_PHASES_KEY);
       deps.store.audit.record({ ...actorOf(principal), action: relink ? "relink" : "link" });
       return c.json(qrOf());
     });

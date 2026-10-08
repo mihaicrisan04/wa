@@ -62,6 +62,8 @@ export interface MessageRow {
   raw: string | null;
 }
 
+export type OldestMessage = Pick<MessageRow, "id" | "from_me" | "ts">;
+
 export type MessageKeyRef = {
   chatJid: string;
   id: string;
@@ -223,6 +225,26 @@ export class MessagesRepo {
         "SELECT chat_jid AS chatJid, id FROM messages WHERE expires_at IS NOT NULL AND expires_at <= $now",
       )
       .all({ now });
+  }
+
+  /** The chat's oldest stored message: where on-demand history paging continues from. */
+  oldest(chatJid: string): OldestMessage | null {
+    return this.db
+      .query<OldestMessage, { chatJid: string }>(
+        "SELECT id, from_me, ts FROM messages WHERE chat_jid = $chatJid ORDER BY ts, rowid LIMIT 1",
+      )
+      .get({ chatJid });
+  }
+
+  /** Messages in a chat sent at or before `ts`. */
+  countUntil(chatJid: string, ts: number): number {
+    return (
+      this.db
+        .query<{ n: number }, { chatJid: string; ts: number }>(
+          "SELECT count(*) AS n FROM messages WHERE chat_jid = $chatJid AND ts <= $ts",
+        )
+        .get({ chatJid, ts })?.n ?? 0
+    );
   }
 
   /** Rows in rowid order, a page at a time, for reindexing. */

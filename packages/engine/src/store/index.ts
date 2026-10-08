@@ -88,6 +88,7 @@ export {
   type MessageKeyRef,
   type MessageRecord,
   type MessageRow,
+  type OldestMessage,
 } from "./messages";
 export type { Participant, ParticipantRole } from "./participants";
 export {
