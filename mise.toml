@@ -63,7 +63,7 @@ run = [
   "mise run test",
   "mise run selftest",
   "mise run build:raycast",
-  "git check-ignore -q daemon/auth_info/creds.json",
+  "git check-ignore -q .wa-dev/auth/creds.json",
 ]
 
 [tasks."dev:engine"]

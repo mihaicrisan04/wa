@@ -98,6 +98,33 @@ Everything lives in `WA_HOME` (default `~/Library/Application Support/wa`; the p
 
 The schema (`store/migrations/001-init.ts`) has chats (with aliases and the LID map), contacts, group participants, messages with an FTS5 index (`unicode61 remove_diacritics 2`, so `stefan` finds `Ștefan`), media, collections, profiles, tokens, outbox, audit log and sync state.
 
+### Inspecting the store
+
+To browse the store with [sqlit](https://github.com/Maxteabag/sqlit), add a project connection once from the repo root. `.sqlit/` is gitignored, and `--alert write` makes sqlit ask before any write: the engine owns `wa.db`, so look but don't edit while it runs.
+
+```sh
+sqlit . connections add sqlite --name wa-local --alert write \
+  --file-path "$HOME/Library/Application Support/wa/wa.db"
+sqlit .                          # the TUI, from the repo root
+```
+
+A few starting points:
+
+```sql
+-- busiest chats
+SELECT coalesce(ch.name, ct.name, ct.push_name, ch.jid) AS chat, count(*) AS messages,
+  datetime(max(m.ts), 'unixepoch', 'localtime') AS last
+FROM messages m JOIN chats ch ON ch.jid = m.chat_jid LEFT JOIN contacts ct ON ct.jid = ch.jid
+GROUP BY ch.jid ORDER BY messages DESC LIMIT 20;
+
+-- what clients and agents did, newest first
+SELECT datetime(ts, 'unixepoch', 'localtime') AS at, profile, action, chat_jid, detail
+FROM audit_log ORDER BY id DESC LIMIT 50;
+
+-- the chats a collection exposes
+SELECT * FROM collection_chats WHERE collection = 'master';
+```
+
 ## Access
 
 A request is made by a **principal**: the admin (anything on the unix socket) or a token, which is bound to a **profile**. A profile has capabilities (`chats:read`, `messages:read`, `media:read`, `send:self`, `send`, `link`) and a chat scope: all chats, or a set of **collections**. The built-in `raycast` profile (all chats, every capability but admin) is recreated at every start. How the scope is enforced is in [security.md](security.md#access-control).

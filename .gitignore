@@ -3,12 +3,6 @@ dist/
 apps/raycast/dist/
 .DS_Store
 
-# legacy daemon runtime files, kept on disk until the cutover
-daemon/auth_info/
-daemon/contacts.json
-daemon/whatsapp-bookmark
-daemon/node_modules/
-
 # engine runtime data
 *.db
 *.db-wal
@@ -19,3 +13,6 @@ tokens/
 
 # dev:engine data
 .wa-dev/
+
+# local sqlit connections (`sqlit .`)
+.sqlit/
