@@ -10,6 +10,7 @@ import {
 import type { ChatPatch } from "../store";
 import type { IngestContext } from "./context";
 import { phoneOf } from "./lid";
+import { realName } from "./names";
 
 type ChatFields = Partial<Chat> & Pick<ChatUpdate, "conditional">;
 
@@ -51,7 +52,7 @@ export function ingestContact(ctx: IngestContext, contact: Partial<Contact>): vo
   ctx.store.contacts.upsert(jid, {
     lid,
     phone: phoneOf(jid) ?? undefined,
-    name: contact.name || undefined,
+    name: realName(contact.name),
     pushName: contact.notify || undefined,
     verifiedName: contact.verifiedName || undefined,
   });
@@ -62,7 +63,7 @@ function chatPatch(chat: ChatFields): ChatPatch {
   const patch: ChatPatch = {};
   const sent = (field: keyof Chat) => Object.hasOwn(chat, field) && chat[field] !== undefined;
 
-  const name = chat.name || chat.displayName;
+  const name = realName(chat.name, chat.displayName);
   if (name) patch.name = name;
   if (sent("archived")) patch.archived = Boolean(chat.archived);
   if (sent("pinned")) patch.pinned = chat.pinned ? toNumber(chat.pinned) : null;

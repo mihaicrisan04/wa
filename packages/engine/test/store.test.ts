@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { migrate, openDatabase } from "../src/store/db";
 import { MIGRATIONS } from "../src/store/migrations";
 import { nowSeconds } from "../src/clock";
@@ -18,9 +19,34 @@ const textOf = () => store.messages.get({ chatJid: ANA_PN, id: "3EB0A" })?.text;
 describe("migrations", () => {
   test("apply once and record their version", () => {
     const db = openDatabase(":memory:");
-    expect(db.query("SELECT version FROM schema_migrations").all()).toEqual([{ version: 1 }]);
+    expect(db.query("SELECT version FROM schema_migrations").all()).toEqual([
+      { version: 1 },
+      { version: 2 },
+    ]);
     migrate(db, MIGRATIONS);
-    expect(count({ db } as Store, "SELECT * FROM schema_migrations")).toBe(1);
+    expect(count({ db } as Store, "SELECT * FROM schema_migrations")).toBe(2);
+    db.close();
+  });
+
+  test("clear masked phone numbers stored as names, keeping real ones", () => {
+    const db = new Database(":memory:", { strict: true });
+    migrate(db, MIGRATIONS.slice(0, 1));
+    const masked = "+40\u2219\u2219\u2219\u2219\u2219\u2219\u221950";
+    db.run(
+      `INSERT INTO contacts (jid, name, push_name, updated_at) VALUES
+         ('masked', '${masked}', 'Ana Pop', 0), ('saved', 'Ana from work', 'Ana Pop', 0),
+         ('number', '+40 700 000 002', NULL, 0)`,
+    );
+    db.run(
+      `INSERT INTO chats (jid, kind, name, updated_at) VALUES ('masked', 'dm', '${masked}', 0)`,
+    );
+    migrate(db, MIGRATIONS);
+    expect(db.query("SELECT jid, name FROM contacts ORDER BY jid").all()).toEqual([
+      { jid: "masked", name: null },
+      { jid: "number", name: "+40 700 000 002" },
+      { jid: "saved", name: "Ana from work" },
+    ]);
+    expect(db.query("SELECT name FROM chats").all()).toEqual([{ name: null }]);
     db.close();
   });
 
