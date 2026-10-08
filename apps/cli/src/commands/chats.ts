@@ -1,10 +1,8 @@
 import { parseArgs } from "node:util";
-import type { ChatKind } from "@wa/sdk";
+import { CHAT_KINDS, type ChatKind } from "@wa/sdk";
 import { UsageError, type Command } from "../command";
 import { engineClient } from "../engine-client";
 import { json, table, time, who } from "../output";
-
-const KINDS: ChatKind[] = ["dm", "group", "self", "broadcast", "newsletter", "other"];
 
 export const chats: Command = {
   name: "chats",
@@ -24,13 +22,13 @@ export const chats: Command = {
     });
     if (values.help) {
       io.out(
-        `usage: wa chats [query] [--collection c] [--kind ${KINDS.join("|")}] [--limit n] [--json]`,
+        `usage: wa chats [query] [--collection c] [--kind ${CHAT_KINDS.join("|")}] [--limit n] [--json]`,
       );
       return 0;
     }
     const kind = values.kind as ChatKind | undefined;
-    if (kind && !KINDS.includes(kind))
-      throw new UsageError(`--kind must be one of ${KINDS.join(", ")}`);
+    if (kind && !CHAT_KINDS.includes(kind))
+      throw new UsageError(`--kind must be one of ${CHAT_KINDS.join(", ")}`);
     const page = await engineClient(io.env).chats({
       q: positionals.join(" ") || undefined,
       collection: values.collection,

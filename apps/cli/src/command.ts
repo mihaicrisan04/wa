@@ -6,11 +6,13 @@ export interface CommandIO {
   env: Record<string, string | undefined>;
   /** Whether stdout is a terminal (colors, highlights). */
   isTTY?: boolean;
-  /** How often `wa link` and `wa backfill` poll the engine; tests shorten it. */
+  /** How often `wa link` and `wa backfill` poll the engine (and `wa service` retries launchd); tests shorten it. */
   pollMs?: number;
   /** How long `wa link` follows a history sync that has gone quiet; tests shorten it. */
   historyIdleMs?: number;
-  /** Runs external programs (`claude`); tests record the calls instead. */
+  /** The user's home, where `wa service` installs; `os.homedir()` when absent. */
+  homeDir?: string;
+  /** Runs external programs (`claude`, `launchctl`, `tmutil`); tests record the calls instead. */
   exec?: Exec;
   /** How a shell runs this `wa`; detected when absent. */
   waCommand?: string[];

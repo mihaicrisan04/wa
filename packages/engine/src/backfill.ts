@@ -6,7 +6,7 @@ import { nowSeconds, type OldestMessage, type Store } from "./store";
 import type { WhatsAppClient } from "./whatsapp/client";
 
 /** The most messages WhatsApp hands out per on-demand request. */
-export const BACKFILL_PAGE_SIZE = 50;
+const BACKFILL_PAGE_SIZE = 50;
 const DEFAULT_TIMEOUT_MS = 45_000;
 /** Finished runs stay around this many at a time, for `wa backfill` to read the outcome. */
 const FINISHED_KEPT = 20;

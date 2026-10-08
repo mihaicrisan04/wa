@@ -42,7 +42,7 @@ function word(value: string): string {
 }
 
 /** Jids WhatsApp assigns look like `<digits>@<server>`; anything else is quoted. */
-export function jidText(jid: string): string {
+function jidText(jid: string): string {
   return /^[\w.:-]+@[\w.-]+$/.test(jid) ? jid : quote(jid);
 }
 
@@ -51,7 +51,7 @@ export function chatRef(jid: string, name: string | null): string {
   return name ? `${quote(name)} (${jidText(jid)})` : jidText(jid);
 }
 
-export function senderOf(message: Message): string {
+function senderOf(message: Message): string {
   if (message.fromMe) return "me";
   return quote(message.senderName ?? message.sender ?? "unknown");
 }

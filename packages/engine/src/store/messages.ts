@@ -117,7 +117,7 @@ const UPSERT_SQL = `
   )
   RETURNING rowid`;
 
-export function recordParams(record: MessageRecord) {
+function recordParams(record: MessageRecord) {
   return {
     chat_jid: record.chatJid,
     id: record.id,

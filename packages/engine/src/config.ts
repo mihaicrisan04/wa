@@ -25,8 +25,8 @@ const envSchema = z.object({
   WA_LOG_LEVEL: z.enum(LOG_LEVELS).optional(),
 });
 
-export function defaultHome(): string {
-  return join(homedir(), "Library", "Application Support", "wa");
+export function defaultHome(userHome: string = homedir()): string {
+  return join(userHome, "Library", "Application Support", "wa");
 }
 
 export class ConfigError extends Error {}

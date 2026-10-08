@@ -1,6 +1,7 @@
+import type { ChatKind } from "@wa/sdk";
 import { nowSeconds, type Database } from "./db";
 
-export type ChatKind = "dm" | "group" | "self" | "broadcast" | "newsletter" | "other";
+export type { ChatKind };
 
 export interface ChatRow {
   jid: string;

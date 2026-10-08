@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import pino from "pino";
 import { z } from "zod";
 import { ApiError, errorHandler } from "../src/api/errors";
+import { ENGINE_VERSION } from "../src/config";
 import { startEngine, type Engine } from "../src/engine";
 import { FakeWhatsAppClient, makeTempHome, type TempHome } from "../src/testing";
 
@@ -26,7 +27,7 @@ describe("engine HTTP listener", () => {
   test("serves /v1/health through the sdk on an ephemeral port", async () => {
     expect(engine.port).toBeGreaterThan(0);
     const client = createWaClient({ baseUrl: `http://127.0.0.1:${engine.port}` });
-    expect(await client.health()).toEqual({ ok: true, version: "0.1.0" });
+    expect(await client.health()).toEqual({ ok: true, version: ENGINE_VERSION });
   });
 
   test("accepts localhost as the host name", async () => {

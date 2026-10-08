@@ -1,11 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { readdir } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { DisconnectReason } from "@whiskeysockets/baileys";
 import pino from "pino";
 import { FakeWhatsAppClient, makeTempHome, type FakeIdentity, type TempHome } from "../src/testing";
 import type { ClientFactory } from "../src/whatsapp/client";
-import { AlreadyLinkedError, WhatsAppConnection } from "../src/whatsapp/connection";
+import {
+  AlreadyLinkedError,
+  PREVIOUS_AUTH_DIR,
+  WhatsAppConnection,
+} from "../src/whatsapp/connection";
 
 const ME: FakeIdentity = { id: "40700000001:7@s.whatsapp.net", lid: "123456789:7@lid", name: "Me" };
 
@@ -29,6 +33,23 @@ function newConnection(createClient: ClientFactory = newFakeClient): WhatsAppCon
 }
 
 const latest = () => clients.at(-1)!;
+const authDir = () => join(temp.home, "auth");
+
+/** Earlier links' credentials, kept inside auth/ so its Time Machine exclusion covers them. */
+async function previousLinks(): Promise<string[]> {
+  return readdir(join(authDir(), PREVIOUS_AUTH_DIR)).catch(() => []);
+}
+
+const BACKUP_EXCLUSION = "com.apple.metadata:com_apple_backup_excludeItem";
+
+/** What `tmutil addexclusion` leaves behind: an extended attribute on the directory itself. */
+function markExcluded(dir: string): void {
+  Bun.spawnSync(["xattr", "-w", BACKUP_EXCLUSION, "com.apple.backupd", dir]);
+}
+
+function isMarkedExcluded(dir: string): boolean {
+  return Bun.spawnSync(["xattr", "-p", BACKUP_EXCLUSION, dir]).exitCode === 0;
+}
 
 async function settle(): Promise<void> {
   for (const client of clients) await client.idle();
@@ -123,7 +144,26 @@ describe("linking", () => {
     await connection.link({ relink: true });
     expect(connection.status().state).toBe("linking");
     expect(connection.isLinked()).toBe(false);
-    expect((await readdir(temp.home)).some((name) => name.startsWith("auth-relinked-"))).toBe(true);
+    expect(await previousLinks()).toEqual([expect.stringMatching(/^relinked-/)]);
+    const [previous] = await previousLinks();
+    const moved = await Bun.file(
+      join(authDir(), PREVIOUS_AUTH_DIR, previous!, "creds.json"),
+    ).json();
+    expect(moved.me.id).toBe(ME.id);
+  });
+
+  test("relinking keeps the auth directory itself, so its backup exclusion stays", async () => {
+    await linkAndOpen();
+    const before = await stat(authDir());
+    if (process.platform === "darwin") markExcluded(authDir());
+
+    await connection.link({ relink: true });
+    latest().pair(ME);
+    await settle();
+    expect(connection.isLinked()).toBe(true);
+    expect((await stat(authDir())).ino).toBe(before.ino);
+    if (process.platform === "darwin") expect(isMarkedExcluded(authDir())).toBe(true);
+    expect(await Bun.file(join(authDir(), "creds.json")).exists()).toBe(true);
   });
 });
 
@@ -142,15 +182,16 @@ describe("disconnects", () => {
   });
 
   test("401 logged out moves credentials aside and waits for a new link", async () => {
+    const before = await stat(authDir());
     latest().close(DisconnectReason.loggedOut);
     await settle();
 
     expect(connection.status().state).toBe("needs_link");
     expect(connection.isLinked()).toBe(false);
     expect(connection.me()).toBeNull();
-    expect((await readdir(temp.home)).some((name) => name.startsWith("auth-logged-out-"))).toBe(
-      true,
-    );
+    expect(await previousLinks()).toEqual([expect.stringMatching(/^logged-out-/)]);
+    expect((await stat(authDir())).ino).toBe(before.ino);
+    expect(await Bun.file(join(authDir(), "creds.json")).exists()).toBe(false);
     await Bun.sleep(30);
     expect(clients).toHaveLength(2);
   });

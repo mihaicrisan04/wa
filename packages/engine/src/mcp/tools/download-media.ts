@@ -9,7 +9,7 @@ import { chatInput } from "../schemas";
 import { defineTool, type ToolEnv } from "../tool";
 
 /** Larger images, and any other media, are copied out instead of inlined. */
-export const INLINE_IMAGE_MAX_BYTES = 1024 * 1024;
+const INLINE_IMAGE_MAX_BYTES = 1024 * 1024;
 
 export const downloadMediaTool = defineTool({
   name: "download_media",

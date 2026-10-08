@@ -3,7 +3,9 @@ import { createWaClient, type WaClient } from "@wa/sdk";
 
 export class EngineUnavailableError extends Error {
   constructor(readonly socket: string) {
-    super("the wa engine is not running (start it with `wa serve`)");
+    super(
+      "the wa engine is not running: start it with `wa service install` (or `wa serve` in the foreground); `wa service status` shows why a service stopped",
+    );
   }
 }
 

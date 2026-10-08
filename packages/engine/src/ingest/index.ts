@@ -134,7 +134,6 @@ function apply(ctx: IngestContext, batch: Batch): HistoryPage | null {
   return page;
 }
 
-export { GroupCache } from "./groups";
 export {
   HISTORY_PHASES_KEY,
   readHistoryPhases,

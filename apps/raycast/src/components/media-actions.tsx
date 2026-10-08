@@ -13,7 +13,7 @@ import {
 } from "../lib/media-file";
 import { MEDIA_DIR, MEDIA_TTL_MS, pruneStaleFiles } from "../lib/temp-files";
 
-export function hasDownloadableMedia(message: Message): boolean {
+function hasDownloadableMedia(message: Message): boolean {
   return message.hasMedia && !message.viewOnce && !message.deletedAt;
 }
 

@@ -62,6 +62,7 @@ describe("argument checks happen before talking to the engine", () => {
     const result = await run(["status"], { WA_HOME: temp.home });
     expect(result).toMatchObject({ code: 1 });
     expect(result.err).toContain("the wa engine is not running");
+    expect(result.err).toContain("`wa service install`");
     await temp.cleanup();
   });
 });

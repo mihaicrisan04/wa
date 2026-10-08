@@ -85,7 +85,7 @@ export async function buildOutgoingContent(payload: OutgoingPayload): Promise<An
  * and dimensions are always set because Baileys' own sharp/jimp fallbacks don't load in
  * the compiled binary.
  */
-export async function prepareImage(bytes: Buffer) {
+async function prepareImage(bytes: Buffer) {
   const image = await Jimp.read(bytes);
   if (image.width > MAX_IMAGE_DIMENSION || image.height > MAX_IMAGE_DIMENSION) {
     const scale = MAX_IMAGE_DIMENSION / Math.max(image.width, image.height);

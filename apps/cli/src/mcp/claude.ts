@@ -1,7 +1,7 @@
 import { FailureError } from "../command";
 import type { Exec } from "../exec";
 
-export const SERVER_NAME = "wa";
+const SERVER_NAME = "wa";
 
 /** Local scope: the server is registered for this project only, outside the repo. */
 export function removeCommand(): string[] {

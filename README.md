@@ -1,51 +1,59 @@
-# whatsapp bookmark
+# wa
 
-<!-- TODO: replace with the actual demo gif -->
-<p align="center">
-  <img width="1020" height="1006" alt="image" src="https://github.com/user-attachments/assets/868b2c65-79d8-494e-9cbc-16cd15143d08" />
-</p>
+A local WhatsApp engine for macOS. `wa` links to your WhatsApp account as a companion device, keeps your chats and messages in a local SQLite store with full-text search, and serves them to a few local clients: a CLI, a Raycast extension and AI agents over MCP. Each client gets a token bound to a profile that decides what it can do and which chats it can see.
 
-<p align="center">
-  a Raycast extension for sending clipboard stuff (links, text, images, files) to WhatsApp, to yourself or any contact.
-</p>
-
-<p align="center">
+<p>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/platform-macOS-lightgrey.svg" alt="macOS">
-  <a href="https://github.com/mihaicrisan04/whatsapp-bookmark/releases/latest"><img src="https://img.shields.io/github/v/release/mihaicrisan04/whatsapp-bookmark?label=release" alt="latest release"></a>
 </p>
 
-## prerequisites
+- **one engine**: `wa serve` owns the WhatsApp connection and all state; clients talk to it on `127.0.0.1:7373`
+- **local history**: chats, contacts, groups and messages, including the full history sync, searchable with accents ignored; media downloaded on demand
+- **scoped access**: profiles combine capabilities with a chat scope (all chats, or named collections), enforced in SQL for every read
+- **agents**: an MCP endpoint, read-only by default, wired into a project with one command
 
-- macOS
-- [Raycast](https://raycast.com)
-- [mise](https://mise.jdx.dev/) (handles node and bun for you)
+## Quick start
 
-## quick start
+Requires macOS, [mise](https://mise.jdx.dev) (installs Bun and Node) and WhatsApp on your phone.
 
-```bash
-git clone https://github.com/mihaicrisan04/whatsapp-bookmark.git
-cd whatsapp-bookmark
+```sh
+git clone https://github.com/mihaicrisan04/wa.git && cd wa
 mise install && mise run install
-mise run check        # lint, typecheck, tests, builds dist/wa and the Raycast extension
-mise run dev:engine   # engine from source on a dev data dir, port 7374
-mise run dev:raycast  # Raycast dev mode
+mise run build                 # compiles dist/wa
+dist/wa service install        # copies it to ~/.local/bin/wa and starts the engine with launchd
+wa link                        # scan the QR in WhatsApp → Linked devices, then watch the history sync
+wa status
 ```
 
-> the repo is mid-migration to the `wa` engine; full setup docs come with the README rewrite.
+`~/.local/bin` must be on your `PATH`. Data lives in `~/Library/Application Support/wa` (override with `WA_HOME`), logs in `~/Library/Logs/wa/engine.log` (`wa service logs`).
 
-the Raycast extension talks to the engine on `127.0.0.1:7373` (change it with the Port preference; `dev:engine` uses 7374). it needs no setup: with the Token preference empty it uses the token the engine writes to `~/Library/Application Support/wa/tokens/raycast.token`.
+## Clients
 
-## commands
+**CLI.** `wa chats`, `wa read <chat>`, `wa search <query>` and the admin commands (`collections`, `profiles`, `tokens`, `audit`) talk to the engine over its unix socket. `wa --help` lists everything.
 
-- **send to yourself**: clipboard goes to your own chat, no UI
-- **send to chat**: pick a contact or group (most recent first), send the clipboard
-- **pick item to send**: pick from the last 6 clipboard items, send to yourself or a chat
-- **search messages**: full-text search with context, copy text, open or save media
-- **link WhatsApp**: scan the QR to link the engine
-- **status**: connection, history sync, counts and outbox
+**Raycast.** `apps/raycast` sends the clipboard (text, links, files, screenshots) to yourself or any chat, searches messages, links WhatsApp and shows the engine's status. It needs no setup: it uses the token the engine writes for it. Load it once with `mise run dev:raycast`.
 
-## more
+**AI agents (MCP).** Give an agent a profile and wire it into a project:
 
-- [WIKI.md](WIKI.md) for architecture, mise tasks, troubleshooting, caveats
-- [LICENSE](LICENSE), MIT
+```sh
+wa collections create master
+wa collections add master "Master PP" "Lab Project"
+wa profiles create master --caps chats:read,messages:read,media:read --collections master
+wa mcp install --profile master --project ~/dev/master
+```
+
+Claude Code in `~/dev/master` now sees only the chats in `master`, read-only. Codex is supported too (`--client codex`).
+
+## Docs
+
+- [docs/architecture.md](docs/architecture.md): how the engine is put together, the store, the API and development
+- [docs/mcp.md](docs/mcp.md): MCP tools, scoping, rendering, Claude Code and Codex setup
+- [docs/security.md](docs/security.md): threat model and what protects your data
+
+## Caveats
+
+wa uses [Baileys](https://github.com/WhiskeySockets/Baileys), an unofficial WhatsApp Web client. This is against WhatsApp's terms of service and carries a small risk of the account being banned. It is meant for personal use on your own account.
+
+## License
+
+[MIT](LICENSE)

@@ -60,7 +60,7 @@ export function chatOf(key: WAMessageKey, resolve: JidResolver): string {
   return resolve.chat(jidNormalizedUser(getChatId(key)));
 }
 
-export function actorOf(key: WAMessageKey, resolve: JidResolver): Actor {
+function actorOf(key: WAMessageKey, resolve: JidResolver): Actor {
   const fromMe = Boolean(key.fromMe);
   const author = fromMe ? null : getKeyAuthor(key);
   return { fromMe, jid: fromMe ? resolve.me() : author ? resolve.user(author) : null };
