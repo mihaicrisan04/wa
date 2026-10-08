@@ -1,99 +1,76 @@
 [tools]
-node = "23.11.1"
-bun = "1.3.10"
+bun = "1.4.2"
+# Raycast's `ray` CLI runs on node
+node = "24"
 
-[tasks.daemon]
-alias = "d"
-description = "Start the WhatsApp daemon (compiled binary)"
-dir = "{{cwd}}/daemon"
-run = "./whatsapp-bookmark"
-
-[tasks."daemon:dev"]
-description = "Start the daemon with bun (for development)"
-dir = "{{cwd}}/daemon"
-run = "bun run index.js"
-
-[tasks."daemon:auth"]
-description = "Fresh auth — wipes credentials, shows QR code"
-dir = "{{cwd}}/daemon"
-run = "rm -rf auth_info contacts.json && ./whatsapp-bookmark"
-
-[tasks."daemon:build"]
-description = "Compile the daemon into a standalone binary"
-dir = "{{cwd}}/daemon"
-run = "bun build --compile --minify index.js --outfile whatsapp-bookmark"
+[env]
+_.path = ["{{config_root}}/node_modules/.bin"]
 
 [tasks.install]
-description = "Install all dependencies"
-run = [
-  "npm install",
-  "cd daemon && npm install",
-]
+description = "Install all workspace dependencies from the lockfile"
+run = "bun install --frozen-lockfile"
 
-[tasks.dev]
-description = "Start Raycast extension in dev mode"
-env = { RAY_Target = "x" }
-run = "npm run dev"
+[tasks.typecheck]
+description = "Type-check every package"
+run = [
+  "tsc --noEmit -p packages/sdk",
+  "tsc --noEmit -p packages/engine",
+  "tsc --noEmit -p apps/cli",
+  "tsc --noEmit -p apps/raycast",
+]
 
 [tasks.lint]
 description = "Lint with oxlint"
-run = "npm run lint"
+run = "oxlint --deny-warnings"
 
 [tasks."lint:fix"]
 description = "Lint and auto-fix with oxlint"
-run = "npm run lint:fix"
+run = "oxlint --fix"
 
 [tasks.format]
 description = "Format with oxfmt"
-run = "npm run format"
+run = "oxfmt"
 
 [tasks."format:check"]
 description = "Check formatting with oxfmt"
-run = "npm run format:check"
+run = "oxfmt --check"
 
-[tasks."daemon:enable"]
-description = "Install and start the daemon as a login service (launchd)"
-run = '''
-DAEMON_PATH="$(cd daemon && pwd)/whatsapp-bookmark"
-DAEMON_DIR="$(cd daemon && pwd)"
-PLIST=~/Library/LaunchAgents/com.whatsapp-bookmark.daemon.plist
+[tasks.test]
+description = "Run every test suite"
+run = "bun test"
 
-cat > "$PLIST" << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.whatsapp-bookmark.daemon</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>$DAEMON_PATH</string>
-    </array>
-    <key>WorkingDirectory</key>
-    <string>$DAEMON_DIR</string>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>/tmp/whatsapp-bookmark-daemon.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/whatsapp-bookmark-daemon.log</string>
-</dict>
-</plist>
-EOF
+[tasks.build]
+description = "Compile the wa binary into dist/wa"
+run = "bun build --compile --minify apps/cli/src/index.ts --outfile dist/wa"
 
-launchctl load "$PLIST"
-echo "daemon enabled — will start on login and restart if it crashes"
-'''
+[tasks."build:raycast"]
+description = "Build the Raycast extension into apps/raycast/dist (never installs it)"
+dir = "{{config_root}}/apps/raycast"
+run = "node_modules/.bin/ray build -e dist -o dist --non-interactive"
 
-[tasks."daemon:disable"]
-description = "Stop and uninstall the daemon login service"
+[tasks.selftest]
+description = "Run the offline selftest against the compiled binary"
+depends = ["build"]
+run = "dist/wa selftest"
+
+[tasks.check]
+description = "Everything CI runs"
 run = [
-  "launchctl unload ~/Library/LaunchAgents/com.whatsapp-bookmark.daemon.plist",
-  "rm ~/Library/LaunchAgents/com.whatsapp-bookmark.daemon.plist",
+  "mise run lint",
+  "mise run format:check",
+  "mise run typecheck",
+  "mise run test",
+  "mise run selftest",
+  "mise run build:raycast",
+  "git check-ignore -q daemon/auth_info/creds.json",
 ]
 
-[tasks."daemon:logs"]
-description = "Tail the daemon logs"
-run = "tail -f /tmp/whatsapp-bookmark-daemon.log"
+[tasks."dev:engine"]
+description = "Run the engine from source with reload, on a dev data dir and port"
+run = 'WA_HOME="${WA_HOME:-{{config_root}}/.wa-dev}" WA_PORT="${WA_PORT:-7374}" bun --watch apps/cli/src/index.ts serve'
+
+[tasks."dev:raycast"]
+description = "Start the Raycast extension in dev mode (Raycast beta)"
+dir = "{{config_root}}/apps/raycast"
+env = { RAY_Target = "x" }
+run = "node_modules/.bin/ray develop"

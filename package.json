@@ -1,81 +1,14 @@
 {
-  "$schema": "https://www.raycast.com/schemas/extension.json",
-  "name": "whatsapp-bookmark",
-  "title": "WhatsApp Bookmark",
-  "description": "Send clipboard content (links, text, images, videos, files) to yourself on WhatsApp",
-  "icon": "icon.png",
-  "author": "mihai",
-  "categories": [
-    "Communication"
+  "name": "wa-workspace",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
   ],
-  "license": "MIT",
-  "commands": [
-    {
-      "name": "send-link",
-      "title": "Send to Yourself",
-      "description": "Send clipboard content to yourself on WhatsApp",
-      "mode": "no-view"
-    },
-    {
-      "name": "pick-link",
-      "title": "Pick Item to Send",
-      "description": "Pick from recent clipboard items and send to WhatsApp",
-      "mode": "view"
-    },
-    {
-      "name": "send-to-contact",
-      "title": "Send to Contact",
-      "description": "Search your WhatsApp contacts and send clipboard content to them",
-      "mode": "view"
-    },
-    {
-      "name": "auth",
-      "title": "WhatsApp Auth",
-      "description": "Authenticate with WhatsApp by scanning a QR code",
-      "mode": "view"
-    },
-    {
-      "name": "daemon-status",
-      "title": "WhatsApp Daemon Status",
-      "description": "Check if the WhatsApp daemon is running and connected",
-      "mode": "view"
-    }
-  ],
-  "preferences": [
-    {
-      "name": "phoneNumber",
-      "title": "Phone Number",
-      "description": "Your WhatsApp phone number with country code (e.g. 40712345678)",
-      "type": "textfield",
-      "required": true
-    },
-    {
-      "name": "daemonPort",
-      "title": "Daemon Port",
-      "description": "Port for the local WhatsApp daemon",
-      "type": "textfield",
-      "required": false,
-      "default": "7272"
-    }
-  ],
-  "dependencies": {
-    "@raycast/api": "^1.104.11",
-    "@raycast/utils": "^2.2.3",
-    "qrcode": "^1.5.4"
-  },
   "devDependencies": {
-    "@types/node": "~22.0.0",
-    "@types/qrcode": "^1.5.6",
-    "oxfmt": "^0.49.0",
-    "oxlint": "^1.64.0",
-    "typescript": "^5.4.5"
-  },
-  "scripts": {
-    "build": "ray build",
-    "dev": "ray develop",
-    "lint": "oxlint src daemon/index.js",
-    "lint:fix": "oxlint --fix src daemon/index.js",
-    "format": "oxfmt src daemon/index.js",
-    "format:check": "oxfmt --check src daemon/index.js"
+    "oxfmt": "^0.72.0",
+    "oxlint": "^1.87.0",
+    "typescript": "~5.9.3"
   }
 }

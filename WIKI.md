@@ -22,37 +22,32 @@ why two parts? Raycast extensions are short-lived Node.js processes, but Baileys
 
 ## setup details
 
-prerequisites: macOS, [Raycast](https://raycast.com), [mise](https://mise.jdx.dev/) (recommended) or Node.js 20+ and [Bun](https://bun.sh) 1.3+.
+prerequisites: macOS, [Raycast](https://raycast.com), [mise](https://mise.jdx.dev/) (recommended) or [Bun](https://bun.sh) 1.4 and Node.js 24.
 
 without mise:
 
 ```bash
-npm install
-cd daemon && npm install
-bun build --compile --minify index.js --outfile whatsapp-bookmark
+bun install --frozen-lockfile
+bun build --compile --minify apps/cli/src/index.ts --outfile dist/wa
 ```
 
-after running `mise daemon:auth`:
-
-1. scan the QR with WhatsApp (Settings > Linked Devices > Link a Device)
-2. wait for `saved X contacts to disk`
-3. Ctrl+C
+the repo is mid-migration to the `wa` engine: the legacy daemon, its `mise daemon:*` tasks and `mise dev` are gone. the architecture and troubleshooting sections still describe the legacy daemon until the docs rewrite.
 
 ## mise tasks
 
-| task | what it does |
-|------|--------------|
-| `mise daemon` (alias `mise d`) | start the daemon |
-| `mise daemon:dev` | start the daemon with bun (dev mode) |
-| `mise daemon:build` | compile the standalone binary |
-| `mise daemon:auth` | fresh auth, wipes credentials and shows new QR |
-| `mise daemon:enable` | install as login service (launchd) |
-| `mise daemon:disable` | remove the login service |
-| `mise daemon:logs` | tail logs at `/tmp/whatsapp-bookmark-daemon.log` |
-| `mise install` | install all deps |
-| `mise dev` | raycast dev mode |
-| `mise lint` / `mise lint:fix` | run oxlint |
-| `mise format` / `mise format:check` | run oxfmt |
+| task                                        | what it does                                            |
+| ------------------------------------------- | ------------------------------------------------------- |
+| `mise run install`                          | install all workspace deps from the lockfile            |
+| `mise run check`                            | everything CI runs                                      |
+| `mise run typecheck`                        | `tsc --noEmit` for every package                        |
+| `mise run test`                             | run every test suite                                    |
+| `mise run lint` / `mise run lint:fix`       | run oxlint                                              |
+| `mise run format` / `mise run format:check` | run oxfmt                                               |
+| `mise run build`                            | compile the `wa` binary into `dist/wa`                  |
+| `mise run build:raycast`                    | build the Raycast extension into `apps/raycast/dist`    |
+| `mise run selftest`                         | build `dist/wa` and run its offline selftest            |
+| `mise run dev:engine`                       | run the engine from source on a dev data dir, port 7374 |
+| `mise run dev:raycast`                      | Raycast dev mode                                        |
 
 ## troubleshooting
 

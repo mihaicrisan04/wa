@@ -1,4 +1,4 @@
-name: build
+name: ci
 
 on:
   push:
@@ -7,12 +7,10 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  check:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2.4.4
       - run: mise run install
-      - run: mise run lint
-      - run: mise run format:check
-      - run: mise run daemon:build
+      - run: mise run check

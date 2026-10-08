@@ -1,7 +1,21 @@
 node_modules/
 dist/
+apps/raycast/dist/
 .DS_Store
+
+# legacy daemon runtime files, kept on disk until the cutover
 daemon/auth_info/
-daemon/node_modules/
-daemon/whatsapp-bookmark
 daemon/contacts.json
+daemon/whatsapp-bookmark
+daemon/node_modules/
+
+# engine runtime data
+*.db
+*.db-wal
+*.db-shm
+auth/
+tokens/
+*.token
+
+# dev:engine data
+.wa-dev/
