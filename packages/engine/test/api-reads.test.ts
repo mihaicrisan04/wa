@@ -127,30 +127,112 @@ describe("chats", () => {
 describe("messages", () => {
   const ids = (page: MessagePage) => page.items.map((message) => message.id);
 
-  test("the latest page comes oldest first, with cursors both ways", async () => {
-    const latest = await get<MessagePage>(`/v1/chats/${enc(PAGED_CHAT)}/messages?limit=3`);
-    expect(ids(latest)).toEqual(["3EB0PAGE4", "3EB0PAGE5", "3EB0PAGE6"]);
-    expect(latest.newer).toBeNull();
-    const older = await get<MessagePage>(
-      `/v1/chats/${enc(PAGED_CHAT)}/messages?limit=3&before=${latest.older}`,
-    );
-    expect(ids(older)).toEqual(["3EB0PAGE1", "3EB0PAGE2", "3EB0PAGE3"]);
-    const newer = await get<MessagePage>(
-      `/v1/chats/${enc(PAGED_CHAT)}/messages?limit=2&after=${older.newer}`,
-    );
-    expect(ids(newer)).toEqual(["3EB0PAGE4", "3EB0PAGE5"]);
+  const paged = (query: string) =>
+    get<MessagePage>(`/v1/chats/${enc(PAGED_CHAT)}/messages?${query}`);
+  const pageIds = (...numbers: number[]) => numbers.map((n) => `3EB0PAGE${n}`);
+  /** Unix seconds of the n-th paged message. */
+  const tsOf = (n: number) => NOW - 10_000 + n * 10;
+  const sides = (page: MessagePage) => ({ older: page.older !== null, newer: page.newer !== null });
+
+  test("cursors walk from the latest page to the oldest and back", async () => {
+    const latest = await paged("limit=3");
+    expect(ids(latest)).toEqual(pageIds(4, 5, 6));
+    expect(sides(latest)).toEqual({ older: true, newer: false });
+
+    const middle = await paged(`limit=3&before=${latest.older}`);
+    expect(ids(middle)).toEqual(pageIds(1, 2, 3));
+    expect(sides(middle)).toEqual({ older: true, newer: true });
+
+    const last = await paged(`limit=3&before=${middle.older}`);
+    expect(ids(last)).toEqual(pageIds(0));
+    expect(sides(last)).toEqual({ older: false, newer: true });
+
+    const back = await paged(`limit=3&after=${last.newer}`);
+    expect(ids(back)).toEqual(pageIds(1, 2, 3));
+    expect(sides(back)).toEqual({ older: true, newer: true });
+
+    const front = await paged(`limit=2&after=${back.newer}`);
+    expect(ids(front)).toEqual(pageIds(4, 5));
+    expect(sides(front)).toEqual({ older: true, newer: true });
+    expect(ids(await paged(`limit=2&after=${front.newer}`))).toEqual(pageIds(6));
+  });
+
+  test("a page that exactly reaches the end of the chat has no cursor past it", async () => {
+    const whole = await paged("limit=7");
+    expect(ids(whole)).toEqual(pageIds(0, 1, 2, 3, 4, 5, 6));
+    expect(sides(whole)).toEqual({ older: false, newer: false });
+
+    const oldest = await paged(`limit=4&before=${tsOf(4)}`);
+    expect(ids(oldest)).toEqual(pageIds(0, 1, 2, 3));
+    expect(sides(oldest)).toEqual({ older: false, newer: true });
+
+    const newest = await paged(`limit=3&after=${tsOf(3)}`);
+    expect(ids(newest)).toEqual(pageIds(4, 5, 6));
+    expect(sides(newest)).toEqual({ older: true, newer: false });
+  });
+
+  test("before and after together, and a before past the newest message", async () => {
+    const between = await paged(`after=${tsOf(0)}&before=${tsOf(5)}&limit=10`);
+    expect(ids(between)).toEqual(pageIds(1, 2, 3, 4));
+    expect(sides(between)).toEqual({ older: true, newer: true });
+
+    const start = await paged(`after=${tsOf(0)}&before=${tsOf(5)}&limit=2`);
+    expect(ids(start)).toEqual(pageIds(1, 2));
+    expect(sides(start)).toEqual({ older: true, newer: true });
+
+    const latest = await paged(`before=${NOW}&limit=3`);
+    expect(ids(latest)).toEqual(pageIds(4, 5, 6));
+    expect(sides(latest)).toEqual({ older: true, newer: false });
   });
 
   test("around centers on a message; before/after take plain times too", async () => {
-    const around = await get<MessagePage>(
-      `/v1/chats/${enc(PAGED_CHAT)}/messages?around=3EB0PAGE3&limit=3`,
-    );
-    expect(ids(around)).toEqual(["3EB0PAGE2", "3EB0PAGE3", "3EB0PAGE4"]);
-    const after = await get<MessagePage>(
-      `/v1/chats/${enc(PAGED_CHAT)}/messages?after=${NOW - 10_000 + 45}&limit=10`,
-    );
-    expect(ids(after)).toEqual(["3EB0PAGE5", "3EB0PAGE6"]);
-    expect(after.older).not.toBeNull();
+    const around = await paged("around=3EB0PAGE3&limit=3");
+    expect(ids(around)).toEqual(pageIds(2, 3, 4));
+    expect(sides(around)).toEqual({ older: true, newer: true });
+    const after = await paged(`after=${NOW - 10_000 + 45}&limit=10`);
+    expect(ids(after)).toEqual(pageIds(5, 6));
+    expect(sides(after)).toEqual({ older: true, newer: false });
+  });
+
+  test("around near either end of the chat", async () => {
+    const oldest = await paged("around=3EB0PAGE0&limit=3");
+    expect(ids(oldest)).toEqual(pageIds(0, 1));
+    expect(sides(oldest)).toEqual({ older: false, newer: true });
+
+    const reachesNewest = await paged("around=3EB0PAGE5&limit=3");
+    expect(ids(reachesNewest)).toEqual(pageIds(4, 5, 6));
+    expect(sides(reachesNewest)).toEqual({ older: true, newer: false });
+
+    const newest = await paged("around=3EB0PAGE6&limit=4");
+    expect(ids(newest)).toEqual(pageIds(5, 6));
+    expect(sides(newest)).toEqual({ older: true, newer: false });
+
+    const alone = await paged("around=3EB0PAGE3&limit=1");
+    expect(ids(alone)).toEqual(pageIds(3));
+    expect(ids(await paged(`limit=3&before=${alone.older}`))).toEqual(pageIds(0, 1, 2));
+    expect(ids(await paged(`limit=3&after=${alone.newer}`))).toEqual(pageIds(4, 5, 6));
+  });
+
+  test("past the newest message, or in an empty chat, a page is empty with no cursors", async () => {
+    expect(await paged(`after=${NOW}`)).toEqual({ items: [], older: null, newer: null });
+
+    // its own engine, so the empty chat doesn't show up in the other tests' chat lists
+    const fresh = await startApi();
+    try {
+      const empty = "120363000000000999@g.us";
+      await fresh.emit({
+        "groups.upsert": [{ id: empty, subject: "Empty", owner: undefined, participants: [] }],
+      });
+      const token = fresh.token({
+        name: "reader",
+        capabilities: ["messages:read"],
+        allChats: true,
+      });
+      const response = await fresh.http(`/v1/chats/${enc(empty)}/messages`, token);
+      expect(await response.json()).toEqual({ items: [], older: null, newer: null });
+    } finally {
+      await fresh.stop();
+    }
   });
 
   test("limit is capped at 200", async () => {

@@ -58,6 +58,24 @@ function beyond(side: "<" | ">", [ts, rowid]: Position, name: string): SqlFragme
 
 const positionOf = (row: MessageRecordRow): Position => [row.ts, row.rowid];
 
+/** Up to `limit` rows, and whether `where` holds more past them, from one `limit + 1` query. */
+function selectWithMore(
+  ctx: ReadContext,
+  where: SqlFragment,
+  order: Order,
+  limit: number,
+): { rows: MessageRecordRow[]; more: boolean } {
+  const rows = selectMessages(ctx, where, order, limit + 1);
+  return { rows: rows.slice(0, limit), more: rows.length > limit };
+}
+
+/** Rows oldest first; `older`/`newer` say whether the chat has more on that side, if known. */
+interface Slice {
+  rows: MessageRecordRow[];
+  older?: boolean;
+  newer?: boolean;
+}
+
 /** One page of a visible chat, oldest first, with cursors to walk further either way. */
 export function listMessages(
   ctx: ReadContext,
@@ -65,41 +83,44 @@ export function listMessages(
   options: MessageListOptions,
 ): MessagePage {
   const chat = inChat(chatJid);
-  const rows = options.around
+  const slice = options.around
     ? pageAround(ctx, chat, options.around, options.limit)
     : pageBetween(ctx, chat, options);
 
-  const cursorBeyond = (side: "<" | ">", row: MessageRecordRow | undefined): string | null => {
+  const cursorBeyond = (
+    side: "<" | ">",
+    row: MessageRecordRow | undefined,
+    known: boolean | undefined,
+  ): string | null => {
     if (!row) return null;
     const edge = beyond(side, positionOf(row), "edge");
-    const more = selectMessages(ctx, and(chat, edge), "ASC", 1).length > 0;
+    const more = known ?? selectMessages(ctx, and(chat, edge), "ASC", 1).length > 0;
     return more ? encodeCursor(positionOf(row)) : null;
   };
   return {
-    items: rows.map(toMessage),
-    older: cursorBeyond("<", rows.at(0)),
-    newer: cursorBeyond(">", rows.at(-1)),
+    items: slice.rows.map(toMessage),
+    older: cursorBeyond("<", slice.rows.at(0), slice.older),
+    newer: cursorBeyond(">", slice.rows.at(-1), slice.newer),
   };
 }
 
 /** The anchor message with about half the page on each side of it. */
-function pageAround(
-  ctx: ReadContext,
-  chat: SqlFragment,
-  id: string,
-  limit: number,
-): MessageRecordRow[] {
+function pageAround(ctx: ReadContext, chat: SqlFragment, id: string, limit: number): Slice {
   const anchor = findMessage(ctx, chat, id);
   const position = positionOf(anchor);
   const olderCount = Math.floor((limit - 1) / 2);
-  const older = selectMessages(ctx, and(chat, beyond("<", position, "a")), "DESC", olderCount);
-  const newer = selectMessages(
+  const older = selectWithMore(ctx, and(chat, beyond("<", position, "a")), "DESC", olderCount);
+  const newer = selectWithMore(
     ctx,
     and(chat, beyond(">", position, "a")),
     "ASC",
     limit - 1 - olderCount,
   );
-  return [...older.reverse(), anchor, ...newer];
+  return {
+    rows: [...older.rows.reverse(), anchor, ...newer.rows],
+    older: older.more,
+    newer: newer.more,
+  };
 }
 
 /** The first page after `after`, or else the last page before `before` (or the latest). */
@@ -107,14 +128,18 @@ function pageBetween(
   ctx: ReadContext,
   chat: SqlFragment,
   { before, after, limit }: MessageListOptions,
-): MessageRecordRow[] {
+): Slice {
   const bounds = [chat];
   if (before) bounds.push(beyond("<", parseBound(before, "before"), "before"));
   if (after) {
     bounds.push(beyond(">", parseBound(after, "after"), "after"));
-    return selectMessages(ctx, and(...bounds), "ASC", limit);
+    const { rows, more } = selectWithMore(ctx, and(...bounds), "ASC", limit);
+    // with a `before` bound too, running out of rows doesn't mean nothing newer exists
+    return { rows, newer: more || !before ? more : undefined };
   }
-  return selectMessages(ctx, and(...bounds), "DESC", limit).reverse();
+  const { rows, more } = selectWithMore(ctx, and(...bounds), "DESC", limit);
+  // nothing is newer than the latest page
+  return { rows: rows.reverse(), older: more, newer: before ? undefined : false };
 }
 
 /** A visible message with up to `context` messages on each side. */
