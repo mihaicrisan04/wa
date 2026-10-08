@@ -143,7 +143,7 @@ describe("FakeWhatsAppClient history and media", () => {
       { lid: "111@lid", pn: "40700000005@s.whatsapp.net" },
     ]);
     expect(await client.signalRepository.lidMapping.getPNForLID("111@lid")).toBe(
-      "40700000005@s.whatsapp.net",
+      "40700000005:0@s.whatsapp.net",
     );
     expect(await client.signalRepository.lidMapping.getPNsForLIDs(["222@lid"])).toBeNull();
   });

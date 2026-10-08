@@ -8,9 +8,13 @@ export {
   type LogLevel,
 } from "./config";
 export { startEngine, type Engine, type StartEngineOptions } from "./engine";
+export { Ingest, reindex, type ReindexResult } from "./ingest";
+export { reindexHome } from "./maintenance";
+export { openStore, Store, toFtsQuery } from "./store";
+export { MediaCache, MediaUnavailableError, type CachedMedia } from "./whatsapp/media";
 export { createLogger, type Logger } from "./logger";
 export { runSelftest, type SelftestResult } from "./selftest";
-export type { ClientFactory, WhatsAppClient } from "./whatsapp/client";
+export type { ClientFactory, SocketHooks, WhatsAppClient } from "./whatsapp/client";
 export {
   AlreadyLinkedError,
   WhatsAppConnection,

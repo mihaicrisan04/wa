@@ -1,0 +1,135 @@
+import type { WAMessageKey, proto } from "@whiskeysockets/baileys";
+import type { Logger } from "../logger";
+import type { Store } from "../store";
+import type { WhatsAppClient } from "../whatsapp/client";
+import type { OwnIdentity } from "../whatsapp/connection";
+import { removeCachedFiles } from "../whatsapp/media";
+import { chatOf } from "../whatsapp/normalize";
+import { parseRaw } from "../whatsapp/raw";
+import { deleteChats, ingestChat, ingestChatUpdate, ingestContact } from "./chats-contacts";
+import type { IngestContext } from "./context";
+import { GroupCache, ingestGroup, ingestParticipantsUpdate } from "./groups";
+import { ingestHistory, recordHistoryStatus } from "./history";
+import { Identity, lookupLids, mappingsIn, unmappedLids, type Batch } from "./lid";
+import {
+  applyActions,
+  carriersOf,
+  deleteMessages,
+  ingestMessageUpdates,
+  normalizeMessages,
+  storeMessages,
+} from "./messages";
+
+export interface IngestOptions {
+  store: Store;
+  logger: Logger;
+  /** Own identity from the persisted credentials. */
+  me: () => OwnIdentity | null;
+  groups?: GroupCache;
+}
+
+/**
+ * Turns Baileys event batches into store writes: one SQLite transaction per batch, batches
+ * strictly one after another.
+ */
+export class Ingest {
+  readonly groups: GroupCache;
+  private queue: Promise<void> = Promise.resolve();
+
+  constructor(private readonly options: IngestOptions) {
+    this.groups = options.groups ?? new GroupCache();
+  }
+
+  /** Subscribes to a socket's events; Baileys drops the listener when the socket is retired. */
+  attach(client: WhatsAppClient): void {
+    client.ev.process((batch) => this.handle(batch, client));
+  }
+
+  /** Resolves once this batch (and every earlier one) is stored. */
+  handle(batch: Batch, client?: WhatsAppClient): Promise<void> {
+    const run = this.queue.then(() => this.process(batch, client));
+    this.queue = run.catch(() => undefined);
+    return run;
+  }
+
+  /** Resolves once every batch handed over so far is stored. */
+  drain(): Promise<void> {
+    return this.queue;
+  }
+
+  /** Content of a stored message, for Baileys to answer retry receipts. */
+  messageContent(key: WAMessageKey): proto.IMessage | undefined {
+    if (!key.remoteJid || !key.id) return undefined;
+    const identity = new Identity(this.options.store, this.options.me());
+    const row = this.options.store.messages.get(chatOf(key, identity), key.id);
+    if (!row?.raw || row.deleted_at !== null) return undefined;
+    return parseRaw(row.raw).message ?? undefined;
+  }
+
+  private async process(batch: Batch, client: WhatsAppClient | undefined): Promise<void> {
+    const { store, logger } = this.options;
+    const me = this.options.me();
+    const mappings = mappingsIn(batch, me);
+    if (client) {
+      const unknown = unmappedLids(batch, mappings, store);
+      mappings.push(...(await lookupLids(client, unknown, logger)));
+    }
+
+    const ctx: IngestContext = {
+      store,
+      identity: new Identity(store, me),
+      logger,
+      orphanedFiles: [],
+    };
+    try {
+      store.transaction(() => {
+        for (const mapping of mappings) ctx.orphanedFiles.push(...ctx.identity.learn(mapping));
+        apply(ctx, batch);
+      });
+    } catch (err) {
+      logger.error({ err, events: Object.keys(batch) }, "could not store a WhatsApp event batch");
+      return;
+    }
+    this.groups.apply(batch);
+    await removeCachedFiles(ctx.orphanedFiles, logger);
+  }
+}
+
+/** Order matters: chats and people exist before messages, deletes come last. */
+function apply(ctx: IngestContext, batch: Batch): void {
+  const history = batch["messaging-history.set"];
+  const historyMessages = normalizeMessages(ctx, history?.messages ?? [], "history");
+  const liveMessages = normalizeMessages(ctx, batch["messages.upsert"]?.messages ?? [], "live");
+  const carriers = carriersOf(historyMessages, liveMessages);
+
+  if (history) ingestHistory(ctx, history, historyMessages, carriers);
+  const status = batch["messaging-history.status"];
+  if (status) recordHistoryStatus(ctx, status);
+
+  for (const chat of batch["chats.upsert"] ?? []) ingestChat(ctx, chat);
+  for (const chat of batch["chats.update"] ?? []) ingestChatUpdate(ctx, chat);
+  for (const contact of batch["contacts.upsert"] ?? []) ingestContact(ctx, contact);
+  for (const contact of batch["contacts.update"] ?? []) ingestContact(ctx, contact);
+  for (const group of batch["groups.upsert"] ?? []) ingestGroup(ctx, group);
+  for (const group of batch["groups.update"] ?? []) ingestGroup(ctx, group);
+  const participants = batch["group-participants.update"];
+  if (participants) ingestParticipantsUpdate(ctx, participants);
+
+  storeMessages(ctx, liveMessages, carriers);
+  applyActions(ctx, carriers.actions);
+  ingestMessageUpdates(ctx, batch["messages.update"] ?? []);
+
+  const deleted = batch["messages.delete"];
+  if (deleted) deleteMessages(ctx, deleted);
+  deleteChats(ctx, batch["chats.delete"] ?? []);
+}
+
+export { GroupCache } from "./groups";
+export {
+  HISTORY_PROGRESS_KEY,
+  HISTORY_STATUS_KEY,
+  type HistoryProgress,
+  type HistoryStatus,
+} from "./history";
+export { Identity } from "./lid";
+export { reindex, type ReindexResult } from "./reindex";

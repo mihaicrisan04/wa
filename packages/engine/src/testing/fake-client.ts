@@ -1,6 +1,7 @@
 import {
   DisconnectReason,
   generateWAMessage,
+  jidDecode,
   makeEventBuffer,
   proto,
   type AnyMessageContent,
@@ -40,28 +41,38 @@ export interface HistoryRequest {
   oldestTimestamp: number;
 }
 
-/** In-memory stand-in for Baileys' LID store; only the lookups the engine uses. */
+/**
+ * In-memory stand-in for Baileys' LID store; only the lookups the engine uses. Like Baileys it
+ * keeps users, not jids, and answers with the LID's device on the PN (`<n>:0@s.whatsapp.net`).
+ */
 export class FakeLidMapping {
-  private readonly pnByLid = new Map<string, string>();
+  private readonly pnUserByLidUser = new Map<string, string>();
 
   async storeLIDPNMappings(pairs: LIDMapping[]): Promise<void> {
-    for (const { lid, pn } of pairs) this.pnByLid.set(lid, pn);
+    for (const { lid, pn } of pairs) {
+      const [lidUser, pnUser] = [jidDecode(lid)?.user, jidDecode(pn)?.user];
+      if (lidUser && pnUser) this.pnUserByLidUser.set(lidUser, pnUser);
+    }
   }
 
   async getPNForLID(lid: string): Promise<string | null> {
-    return this.pnByLid.get(lid) ?? null;
+    return (await this.getPNsForLIDs([lid]))?.[0]?.pn ?? null;
   }
 
   async getPNsForLIDs(lids: string[]): Promise<LIDMapping[] | null> {
     const found = lids.flatMap((lid) => {
-      const pn = this.pnByLid.get(lid);
-      return pn ? [{ lid, pn }] : [];
+      const decoded = jidDecode(lid);
+      const pnUser = decoded && this.pnUserByLidUser.get(decoded.user);
+      return pnUser ? [{ lid, pn: `${pnUser}:${decoded.device ?? 0}@s.whatsapp.net` }] : [];
     });
     return found.length ? found : null;
   }
 
   async getLIDForPN(pn: string): Promise<string | null> {
-    for (const [lid, mapped] of this.pnByLid) if (mapped === pn) return lid;
+    const pnUser = jidDecode(pn)?.user;
+    for (const [lidUser, mapped] of this.pnUserByLidUser) {
+      if (mapped === pnUser) return `${lidUser}@lid`;
+    }
     return null;
   }
 }
@@ -116,6 +127,13 @@ export class FakeWhatsAppClient implements WhatsAppClient {
     for (const [event, data] of Object.entries(events)) {
       this.ev.emit(event as keyof BaileysEventMap, data as never);
     }
+    this.ev.flush();
+  }
+
+  /** Emits whatever `work` emits as one buffered batch, so Baileys folds updates into upserts. */
+  buffered(work: () => void): void {
+    this.ev.buffer();
+    work();
     this.ev.flush();
   }
 

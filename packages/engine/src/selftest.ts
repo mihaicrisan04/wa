@@ -7,6 +7,8 @@ import {
 } from "@whiskeysockets/baileys";
 import { Jimp, JimpMime } from "jimp";
 import pino from "pino";
+import { Ingest } from "./ingest";
+import { openStore } from "./store";
 import { buildMessage, content } from "./testing/fixtures";
 import { buildOutgoingContent } from "./whatsapp/outgoing";
 
@@ -42,6 +44,7 @@ export async function runSelftest(): Promise<SelftestResult[]> {
 const CHECKS: Check[] = [
   { name: "outgoing image is encrypted for upload", run: outgoingImage },
   { name: "fixture message decodes through Baileys", run: decodeFixture },
+  { name: "message store ingests and searches a fixture", run: storeFixture },
 ];
 
 async function outgoingImage(): Promise<void> {
@@ -78,6 +81,26 @@ async function decodeFixture(): Promise<void> {
     toNumber(decoded.messageTimestamp) === 1_700_000_000,
     "timestamp did not survive the round trip",
   );
+}
+
+async function storeFixture(): Promise<void> {
+  const store = openStore(":memory:");
+  try {
+    const ingest = new Ingest({ store, logger: pino({ level: "silent" }), me: () => null });
+    const message = buildMessage({
+      chat: "40700000002@s.whatsapp.net",
+      message: content.text("Ștefan a trimis sarcina"),
+    });
+    await ingest.handle({ "messages.upsert": { messages: [message], type: "notify" } });
+    const hits = store.search("stefan sarcină");
+    assert(
+      hits.length === 1 && hits[0]?.id === message.key.id,
+      "full-text search missed the fixture",
+    );
+    assert(ingest.messageContent(message.key)?.conversation, "raw did not round-trip");
+  } finally {
+    store.close();
+  }
 }
 
 function assert(condition: unknown, message: string): asserts condition {
