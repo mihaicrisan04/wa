@@ -11,5 +11,8 @@
     "oxfmt": "^0.72.0",
     "oxlint": "^1.87.0",
     "typescript": "~5.9.3"
+  },
+  "patchedDependencies": {
+    "@whiskeysockets/baileys@7.0.0-rc14": "patches/@whiskeysockets%2Fbaileys@7.0.0-rc14.patch"
   }
 }

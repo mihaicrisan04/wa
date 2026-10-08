@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { initAuthCreds } from "@whiskeysockets/baileys";
+import { generateLoginNode, initAuthCreds, proto } from "@whiskeysockets/baileys";
 import {
   ANA_PN,
   buildMessage,
@@ -106,4 +106,20 @@ test("the Baileys socket config wires the hooks and the mandatory options", () =
     cachedGroupMetadata,
   });
   expect(config.shouldSyncHistoryMessage?.({} as never)).toBe(true);
+});
+
+test("the socket pairs as a Desktop sub-platform WhatsApp still accepts", () => {
+  const config = socketConfig({
+    version: [2, 3000, 1],
+    auth: { creds: initAuthCreds(), keys: { get: async () => ({}), set: async () => undefined } },
+    logger: silentLogger,
+    hooks: { getMessage: async () => undefined, cachedGroupMetadata: async () => undefined },
+  });
+  const payload = generateLoginNode("40700000000@s.whatsapp.net", {
+    ...config,
+    countryCode: "US",
+  } as Parameters<typeof generateLoginNode>[1]);
+  expect(payload.webInfo?.webSubPlatform).toBe(
+    proto.ClientPayload.WebInfo.WebSubPlatform.WIN_HYBRID,
+  );
 });

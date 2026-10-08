@@ -35,7 +35,9 @@ export function socketConfig({
   return {
     version,
     auth: { creds: auth.creds, keys: makeCacheableSignalKeyStore(auth.keys, logger) },
-    browser: Browsers.macOS("Desktop"),
+    // a Desktop identity gets the full history; WhatsApp refuses macOS Desktop pairings (428),
+    // and Windows needs the WIN_HYBRID backport in patches/
+    browser: Browsers.windows("Desktop"),
     syncFullHistory: true,
     // rc14's default skips FULL history syncs
     shouldSyncHistoryMessage: () => true,
