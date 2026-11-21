@@ -225,7 +225,7 @@ mise run dev:engine   # the engine from source with reload, WA_HOME=.wa-dev, por
 | `mise run build`                   | compile `dist/wa`                                                                       |
 | `mise run selftest`                | build `dist/wa` and run its offline selftest                                            |
 | `mise run build:raycast`           | build the extension into `apps/raycast/dist` (never installs it)                        |
-| `mise run dev:raycast`             | dev mode in the Raycast beta, which also loads the extension into it                    |
+| `mise run dev:raycast`             | dev mode in Raycast, which also loads the extension into it                             |
 
 Tests never reach WhatsApp. A fake `WhatsAppClient` emits Baileys-shaped event batches built with `proto.WebMessageInfo.fromObject`. Tests that start an engine get a temporary `WA_HOME` and a server on port 0; store and ingest tests use in-memory SQLite. The leak suites probe every HTTP route and MCP tool with out-of-scope chats.
 
